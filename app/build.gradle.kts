@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.crimeapp"
+    namespace = "com.dinner.crimeapp"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.crimeapp"
+        applicationId = "com.dinner.crimeapp"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

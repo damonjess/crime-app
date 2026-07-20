@@ -12,31 +12,60 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.collectLatest
 
 @SuppressLint("MissingPermission")
+@OptIn(FlowPreview::class)
 @Composable
 fun CrimeMapScreen(
     viewModel: CrimeMapViewModel = viewModel(),
-    startLat: Double = 51.5074, // London default
+    startLat: Double = 51.5074,
     startLng: Double = -0.1278
 ) {
     val state by viewModel.state.collectAsState()
-
-    // Key map movement to startLat/startLng changes
     val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
 
-    LaunchedEffect(Unit) {
+    // Tracks where crimes were last fetched for
+    var loadedCenter by remember { mutableStateOf(mapCenter) }
+    // Tracks where the user has currently panned to
+    var pendingCenter by remember { mutableStateOf<GeoPoint?>(null) }
+    
+    // Tracks the last loaded center we actually moved the map to
+    var lastMovedCenter by remember { mutableStateOf(loadedCenter) }
+
+    val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory) {
+        viewModel.visibleCrimes()
+    }
+    var lastRenderedCrimes by remember { mutableStateOf<List<com.dinner.crimeapp.data.Crime>>(emptyList()) }
+
+    val scrollFlow = remember { MutableSharedFlow<GeoPoint>(extraBufferCapacity = 1) }
+
+    LaunchedEffect(scrollFlow) {
+        scrollFlow
+            .debounce(300)
+            .collectLatest { center ->
+                pendingCenter = center
+            }
+    }
+
+    LaunchedEffect(startLat, startLng) {
         viewModel.loadCrimes(startLat, startLng)
+        loadedCenter = mapCenter
+        pendingCenter = null
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Filter Area
         Column(Modifier.fillMaxWidth()) {
-            // Month filter chips
             val months = state.crimesByMonth.keys.sortedDescending()
             LazyRowMonthPicker(
                 months = months,
@@ -54,36 +83,86 @@ fun CrimeMapScreen(
                         setMultiTouchControls(true)
                         controller.setZoom(15.0)
                         controller.setCenter(mapCenter)
+
+                        // Fix: prevent Compose from intercepting touch events mid-drag,
+                        // which otherwise causes the map to jump instead of pan smoothly
+                        setOnTouchListener { view, event ->
+                            when (event.action) {
+                                android.view.MotionEvent.ACTION_DOWN -> {
+                                    view.parent.requestDisallowInterceptTouchEvent(true)
+                                }
+                                android.view.MotionEvent.ACTION_UP,
+                                android.view.MotionEvent.ACTION_CANCEL -> {
+                                    view.parent.requestDisallowInterceptTouchEvent(false)
+                                }
+                            }
+                            false // let the MapView still process the touch normally
+                        }
+
+                        addMapListener(object : MapListener {
+                            override fun onScroll(event: ScrollEvent?): Boolean {
+                                scrollFlow.tryEmit(this@apply.mapCenter as GeoPoint)
+                                return true
+                            }
+                            override fun onZoom(event: ZoomEvent?): Boolean = false
+                        })
                     }
                 },
                 update = { mapView ->
-                    // Handle map centering when startLat/startLng changes externally
-                    if (mapView.mapCenter.latitude != mapCenter.latitude || 
-                        mapView.mapCenter.longitude != mapCenter.longitude) {
-                        mapView.controller.animateTo(mapCenter)
+                    // Move map only when loadedCenter changes (e.g. from "Use my location" 
+                    // or "Search this area" after fetching new data)
+                    if (loadedCenter != lastMovedCenter) {
+                        mapView.controller.animateTo(loadedCenter)
+                        lastMovedCenter = loadedCenter
                     }
 
-                    mapView.overlays.clear()
-                    viewModel.visibleCrimes().forEach { crime ->
-                        val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
-                        val lng = crime.location.longitude.toDoubleOrNull() ?: return@forEach
-                        val marker = Marker(mapView).apply {
-                            position = GeoPoint(lat, lng)
-                            title = crime.category.replace("-", " ")
-                            snippet = "Month: ${crime.month} · Status: ${crime.outcomeStatus?.category ?: "Under investigation"}"
+                    // Only rebuild markers if the crime data has actually changed
+                    if (lastRenderedCrimes != visibleCrimes) {
+                        mapView.overlays.removeAll { it is Marker }
+                        visibleCrimes.forEach { crime ->
+                            val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
+                            val lng = crime.location.longitude.toDoubleOrNull() ?: return@forEach
+                            val marker = Marker(mapView).apply {
+                                position = GeoPoint(lat, lng)
+                                title = crime.category.replace("-", " ")
+                                snippet = "Month: ${crime.month} · Status: ${crime.outcomeStatus?.category ?: "Under investigation"}"
+                            }
+                            mapView.overlays.add(marker)
                         }
-                        mapView.overlays.add(marker)
+                        mapView.invalidate()
+                        lastRenderedCrimes = visibleCrimes
                     }
-                    mapView.invalidate()
                 }
             )
 
             if (state.isLoading) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
+
+            // "Search this area" button — only show once panned far enough
+            pendingCenter?.let { center ->
+                val movedFar = distanceMeters(
+                    loadedCenter.latitude, loadedCenter.longitude,
+                    center.latitude, center.longitude
+                ) > 400 // meters threshold
+
+                if (movedFar) {
+                    Button(
+                        onClick = {
+                            viewModel.loadCrimes(center.latitude, center.longitude)
+                            loadedCenter = center
+                            pendingCenter = null
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp)
+                    ) {
+                        Text("Search this area")
+                    }
+                }
+            }
         }
 
-        // Crime summary card
         CrimeSummaryCard(summary = viewModel.summary())
 
         if (state.error != null) {
@@ -94,6 +173,18 @@ fun CrimeMapScreen(
             )
         }
     }
+}
+
+/** Simple haversine distance in meters between two lat/lng points. */
+private fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val earthRadius = 6371000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return earthRadius * c
 }
 
 @Composable

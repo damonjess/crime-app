@@ -1,0 +1,130 @@
+package com.example.crimeapp.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.example.crimeapp.data.Crime
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CrimeListScreen(viewModel: CrimeMapViewModel) {
+    val state by viewModel.state.collectAsState()
+    var selectedCrime by remember { mutableStateOf<Crime?>(null) }
+
+    val crimes = viewModel.visibleCrimes()
+        .sortedByDescending { it.month } // most recent first
+
+    Column(Modifier.fillMaxSize()) {
+        CrimeSummaryCard(summary = viewModel.summary())
+
+        if (crimes.isEmpty() && !state.isLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No crimes found for this area/month.")
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
+                    CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+
+    selectedCrime?.let { crime ->
+        ModalBottomSheet(onDismissRequest = { selectedCrime = null }) {
+            CrimeDetailContent(crime)
+        }
+    }
+}
+
+@Composable
+fun CrimeListItem(crime: Crime, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        leadingContent = {
+            Icon(getIconForCategory(crime.category), contentDescription = null)
+        },
+        headlineContent = {
+            Text(
+                crime.category.replace("-", " ").replaceFirstChar { it.uppercase() },
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        supportingContent = {
+            Column {
+                Text(crime.location.street?.name ?: "Unknown location")
+                Text("Month: ${crime.month}")
+            }
+        },
+        trailingContent = {
+            val status = crime.outcomeStatus?.category
+            Text(
+                text = status?.let { shortenOutcome(it) } ?: "Ongoing",
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    )
+}
+
+@Composable
+fun CrimeDetailContent(crime: Crime) {
+    Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 32.dp)) {
+        Text(
+            crime.category.replace("-", " ").replaceFirstChar { it.uppercase() },
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(12.dp))
+
+        DetailRow("Location", crime.location.street?.name ?: "Unknown")
+        DetailRow("Location type", crime.locationType ?: "Not specified")
+        DetailRow("Month reported", crime.month)
+        DetailRow("Coordinates", "${crime.location.latitude}, ${crime.location.longitude}")
+        DetailRow("Outcome", crime.outcomeStatus?.category ?: "No outcome yet / ongoing")
+        crime.outcomeStatus?.date?.let { DetailRow("Outcome date", it) }
+        DetailRow("Case ID", crime.persistentId.ifBlank { crime.id.toString() })
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(140.dp)
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun shortenOutcome(outcome: String): String = when {
+    outcome.contains("no-further-action", ignoreCase = true) -> "No further action"
+    outcome.contains("court", ignoreCase = true) -> "Court"
+    outcome.contains("charged", ignoreCase = true) -> "Charged"
+    outcome.contains("investigation", ignoreCase = true) -> "Investigating"
+    else -> outcome.replace("-", " ").take(20)
+}
+
+@Composable
+private fun getIconForCategory(category: String): ImageVector = when {
+    category.contains("theft", ignoreCase = true) -> Icons.Default.ShoppingBag
+    category.contains("burglary", ignoreCase = true) -> Icons.Default.Home
+    category.contains("violence", ignoreCase = true) -> Icons.Default.Warning
+    category.contains("drugs", ignoreCase = true) -> Icons.Default.MedicalServices
+    category.contains("vehicle", ignoreCase = true) -> Icons.Default.DirectionsCar
+    category.contains("public-order", ignoreCase = true) -> Icons.Default.People
+    else -> Icons.Default.LocationOn
+}

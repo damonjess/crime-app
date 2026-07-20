@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered Warning / Violence icon -->
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M54,20L10,96h88L54,20zM58,84h-8v-8h8v8zM58,68h-8V52h8v16z" />
+</vector>

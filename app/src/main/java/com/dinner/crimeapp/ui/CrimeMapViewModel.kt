@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dinner.crimeapp.data.Crime
 import com.dinner.crimeapp.data.CrimeRepository
+import com.dinner.crimeapp.data.OutcomeEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,12 @@ class CrimeMapViewModel(
 
     private val _state = MutableStateFlow(CrimeMapState())
     val state: StateFlow<CrimeMapState> = _state.asStateFlow()
+
+    private val _outcomeHistory = MutableStateFlow<List<OutcomeEntry>>(emptyList())
+    val outcomeHistory: StateFlow<List<OutcomeEntry>> = _outcomeHistory.asStateFlow()
+
+    private val _outcomeLoading = MutableStateFlow(false)
+    val outcomeLoading: StateFlow<Boolean> = _outcomeLoading.asStateFlow()
 
     init {
         loadCategories()
@@ -113,5 +120,21 @@ class CrimeMapViewModel(
             topCategory.contains("weapon", ignoreCase = true) -> IconSwitcher.CrimeTheme.VIOLENCE
             else -> IconSwitcher.CrimeTheme.DEFAULT
         }
+    }
+
+    fun loadOutcomeHistory(persistentId: String) {
+        if (persistentId.isBlank()) {
+            _outcomeHistory.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _outcomeLoading.value = true
+            _outcomeHistory.value = repository.getOutcomeHistory(persistentId)
+            _outcomeLoading.value = false
+        }
+    }
+
+    fun clearOutcomeHistory() {
+        _outcomeHistory.value = emptyList()
     }
 }

@@ -1,6 +1,7 @@
 package com.dinner.crimeapp.data
 
 import retrofit2.http.GET
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface PoliceApiService {
@@ -16,4 +17,9 @@ interface PoliceApiService {
     suspend fun getCategories(
         @Query("date") month: String? = null
     ): List<CrimeCategory>
+
+    @GET("outcomes-for-crime/{persistentId}")
+    suspend fun getOutcomeHistory(
+        @Path("persistentId") persistentId: String
+    ): OutcomeHistoryResponse
 }

@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -42,8 +43,8 @@ dependencies {
     // Networking
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
-    implementation(libs.moshi.kotlin)
-    implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
+    implementation(libs.moshi)
+    ksp(libs.moshi.codegen)
     implementation(libs.okhttp.logging)
 
     // Map

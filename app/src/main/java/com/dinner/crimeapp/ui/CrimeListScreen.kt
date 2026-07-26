@@ -26,6 +26,7 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
 
     Column(Modifier.fillMaxSize()) {
         CrimeSummaryCard(summary = viewModel.summary())
+        CrimeTrendChart(crimesByMonth = state.crimesByMonth)
 
         if (crimes.isEmpty() && !state.isLoading) {
             Box(
@@ -51,8 +52,16 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
     }
 
     selectedCrime?.let { crime ->
-        ModalBottomSheet(onDismissRequest = { selectedCrime = null }) {
-            CrimeDetailContent(crime)
+        LaunchedEffect(crime.persistentId) {
+            viewModel.loadOutcomeHistory(crime.persistentId)
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                selectedCrime = null
+                viewModel.clearOutcomeHistory()
+            }
+        ) {
+            CrimeDetailContent(crime, viewModel)
         }
     }
 }
@@ -87,7 +96,10 @@ fun CrimeListItem(crime: Crime, onClick: () -> Unit) {
 }
 
 @Composable
-fun CrimeDetailContent(crime: Crime) {
+fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
+    val history by viewModel.outcomeHistory.collectAsState()
+    val loading by viewModel.outcomeLoading.collectAsState()
+
     Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 32.dp)) {
         Text(
             crime.category.replace("-", " ").replaceFirstChar { it.uppercase() },
@@ -100,9 +112,39 @@ fun CrimeDetailContent(crime: Crime) {
         DetailRow("Location type", crime.locationType ?: "Not specified")
         DetailRow("Month reported", crime.month)
         DetailRow("Coordinates", "${crime.location.latitude}, ${crime.location.longitude}")
-        DetailRow("Outcome", crime.outcomeStatus?.category ?: "No outcome yet / ongoing")
-        crime.outcomeStatus?.date?.let { DetailRow("Outcome date", it) }
+        DetailRow("Current status", crime.outcomeStatus?.category ?: "No outcome yet / ongoing")
         DetailRow("Case ID", crime.persistentId.ifBlank { crime.id.toString() })
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            "Case History",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+
+        when {
+            loading -> CircularProgressIndicator(Modifier.padding(8.dp))
+            history.isEmpty() -> Text(
+                "No further outcome stages recorded yet.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            else -> history.forEachIndexed { index, entry ->
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Text(
+                        "${index + 1}. ${entry.category.replace("-", " ").replaceFirstChar { it.uppercase() }}",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        entry.date,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
     }
 }
 

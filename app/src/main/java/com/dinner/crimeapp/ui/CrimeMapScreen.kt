@@ -45,7 +45,6 @@ fun CrimeMapScreen(
     val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory) {
         viewModel.visibleCrimes()
     }
-    var lastRenderedCrimes by remember { mutableStateOf<List<com.dinner.crimeapp.data.Crime>>(emptyList()) }
 
     LaunchedEffect(startLat, startLng) {
         viewModel.loadCrimes(startLat, startLng)
@@ -122,7 +121,7 @@ fun CrimeMapScreen(
                     }
 
                     // Only rebuild markers if the crime data has actually changed
-                    if (lastRenderedCrimes != visibleCrimes) {
+                    if (mapView.tag != visibleCrimes) {
                         mapView.overlays.removeAll { it is Marker }
                         visibleCrimes.forEach { crime ->
                             val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
@@ -135,7 +134,7 @@ fun CrimeMapScreen(
                             mapView.overlays.add(marker)
                         }
                         mapView.invalidate()
-                        lastRenderedCrimes = visibleCrimes
+                        mapView.tag = visibleCrimes
                     }
                 }
             )

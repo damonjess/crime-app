@@ -28,12 +28,10 @@
 
         <activity-alias
             android:name=".DefaultLauncher"
+            android:targetActivity="com.dinner.crimeapp.MainActivity"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".MainActivity">
+            android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -47,7 +45,7 @@
             android:icon="@mipmap/ic_launcher_theft"
             android:label="Theft Map"
             android:roundIcon="@mipmap/ic_launcher_theft"
-            android:targetActivity=".MainActivity">
+            android:targetActivity="com.dinner.crimeapp.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -61,7 +59,7 @@
             android:icon="@mipmap/ic_launcher_violence"
             android:label="Violence Map"
             android:roundIcon="@mipmap/ic_launcher_violence"
-            android:targetActivity=".MainActivity">
+            android:targetActivity="com.dinner.crimeapp.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

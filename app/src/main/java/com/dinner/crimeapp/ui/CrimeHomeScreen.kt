@@ -65,12 +65,6 @@ fun CrimeHomeScreen() {
 
     LaunchedEffect(Unit) { viewModel.loadCategories() }
 
-    // Update app icon based on dominant crime in visible area
-    // val dominantTheme = viewModel.getDominantTheme()
-    // LaunchedEffect(dominantTheme) {
-    //    IconSwitcher.setTheme(context, dominantTheme)
-    // }
-
     Column(
         Modifier
             .fillMaxSize()

@@ -5,13 +5,13 @@ I have implemented changes to stop the map from snapping back to its initial cen
 ## Changes
 
 ### Map Snapping Prevention
-In [CrimeMapScreen.kt](file:///C:/Users/Damon/StudioProjects/crime-app/app/src/main/java/com/example/crimeapp/ui/CrimeMapScreen.kt), I removed the aggressive centering logic from the `AndroidView`'s `update` block. Previously, any recomposition (like when crime data finished loading) would trigger `animateTo`, forcing the map back to the starting coordinates.
+In [CrimeMapScreen.kt](file:///C:/Users/Damon/StudioProjects/crime-app/app/src/main/java/com/dinner/crimeapp/ui/CrimeMapScreen.kt), I removed the aggressive centering logic from the `AndroidView`'s `update` block. Previously, any recomposition (like when crime data finished loading) would trigger `animateTo`, forcing the map back to the starting coordinates.
 I replaced this with:
 - A `LaunchedEffect(mapCenter)` that only triggers `animateTo` when the starting coordinates change significantly (e.g., when the user clicks "Use my location").
 - A threshold check (`abs(diff) > 0.001`) to ensure that small state updates don't fight against the user's manual scrolling.
 
 ### State Persistence across Navigation and Restarts
-In [CrimeHomeScreen.kt](file:///C:/Users/Damon/StudioProjects/crime-app/app/src/main/java/com/example/crimeapp/ui/CrimeHomeScreen.kt), I upgraded the state management:
+In [CrimeHomeScreen.kt](file:///C:/Users/Damon/StudioProjects/crime-app/app/src/main/java/com/dinner/crimeapp/ui/CrimeHomeScreen.kt), I upgraded the state management:
 - Used `rememberSaveable` for `tab`, `currentLat`, and `currentLng`. This ensures that if the user moves the map, switches to the List tab, and comes back, the map remains at the new location.
 - Crucially, this also handles activity restarts caused by `IconSwitcher`. When the app icon changes based on crime data, the activity often restarts; `rememberSaveable` ensures the user doesn't lose their place.
 - Added a `MapListener` to update these saved coordinates in real-time as the user scrolls.

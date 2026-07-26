@@ -16,17 +16,22 @@ object IconSwitcher {
         val packageManager = context.packageManager
         
         CrimeTheme.entries.forEach { entry ->
-            val state = if (entry == theme) {
+            val componentName = ComponentName(context, entry.aliasName)
+            val currentState = packageManager.getComponentEnabledSetting(componentName)
+            
+            val targetState = if (entry == theme) {
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             } else {
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED
             }
             
-            packageManager.setComponentEnabledSetting(
-                ComponentName(context, entry.aliasName),
-                state,
-                PackageManager.DONT_KILL_APP
-            )
+            if (currentState != targetState) {
+                packageManager.setComponentEnabledSetting(
+                    componentName,
+                    targetState,
+                    PackageManager.DONT_KILL_APP
+                )
+            }
         }
     }
 }

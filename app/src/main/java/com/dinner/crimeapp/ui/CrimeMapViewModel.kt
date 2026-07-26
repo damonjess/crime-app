@@ -116,23 +116,6 @@ class CrimeMapViewModel(
             .map { CategoryCount(it.key, it.value) }
     }
 
-    fun getDominantTheme(): IconSwitcher.CrimeTheme {
-        val crimes = visibleCrimes()
-        if (crimes.isEmpty()) return IconSwitcher.CrimeTheme.DEFAULT
-        
-        val topCategory = crimes.groupingBy { it.category }
-            .eachCount()
-            .maxByOrNull { it.value }?.key ?: return IconSwitcher.CrimeTheme.DEFAULT
-
-        return when {
-            topCategory.contains("theft", ignoreCase = true) || 
-            topCategory.contains("burglary", ignoreCase = true) -> IconSwitcher.CrimeTheme.THEFT
-            topCategory.contains("violence", ignoreCase = true) || 
-            topCategory.contains("weapon", ignoreCase = true) -> IconSwitcher.CrimeTheme.VIOLENCE
-            else -> IconSwitcher.CrimeTheme.DEFAULT
-        }
-    }
-
     fun loadOutcomeHistory(persistentId: String) {
         if (persistentId.isBlank()) {
             _outcomeHistory.value = emptyList()

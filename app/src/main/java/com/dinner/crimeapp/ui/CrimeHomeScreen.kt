@@ -2,7 +2,6 @@ package com.dinner.crimeapp.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -20,7 +19,6 @@ import com.google.android.gms.location.LocationServices
 
 @Composable
 fun CrimeHomeScreen() {
-    Log.e("CrimeHomeScreen", "Composing CrimeHomeScreen")
     val viewModel: CrimeMapViewModel = viewModel()
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }

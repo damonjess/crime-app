@@ -1,6 +1,5 @@
 package com.dinner.crimeapp.ui
 
-import android.util.Log
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.foundation.layout.*
@@ -32,7 +31,6 @@ fun CrimeMapScreen(
     startLat: Double = 51.5074,
     startLng: Double = -0.1278
 ) {
-    Log.e("CrimeMapScreen", "Composing CrimeMapScreen: startLat=$startLat, startLng=$startLng")
     val state by viewModel.state.collectAsState()
     val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
 

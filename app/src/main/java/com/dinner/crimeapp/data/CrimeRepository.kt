@@ -11,7 +11,6 @@ class CrimeRepository(private val api: PoliceApiService = PoliceApi.service) {
 
     /** Fetch crimes for a single month near a point. month=null → latest available. */
     suspend fun getCrimes(lat: Double, lng: Double, month: String? = null): List<Crime> {
-        Log.e("CrimeRepository", "getCrimes: lat=$lat, lng=$lng, month=$month")
         return api.getCrimesNear(lat, lng, month)
     }
 
@@ -28,7 +27,6 @@ class CrimeRepository(private val api: PoliceApiService = PoliceApi.service) {
         lng: Double,
         monthsBack: Int = 6
     ): Map<String, List<Crime>> = coroutineScope {
-        Log.e("CrimeRepository", "getCrimesForRange: lat=$lat, lng=$lng, monthsBack=$monthsBack")
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM")
         val latestAvailable = YearMonth.now().minusMonths(2)
 

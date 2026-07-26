@@ -12,22 +12,42 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import kotlin.math.abs
 
 @SuppressLint("MissingPermission")
 @Composable
 fun CrimeMapScreen(
     viewModel: CrimeMapViewModel = viewModel(),
     startLat: Double = 51.5074, // London default
-    startLng: Double = -0.1278
+    startLng: Double = -0.1278,
+    onMapMoved: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
 
     // Key map movement to startLat/startLng changes
     val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+
+    // Centering only when startLat/startLng props change significantly (e.g. from parent)
+    LaunchedEffect(mapCenter) {
+        val map = mapViewRef ?: return@LaunchedEffect
+        val currentCenter = map.mapCenter
+        val latDiff = abs(currentCenter.latitude - mapCenter.latitude)
+        val lngDiff = abs(currentCenter.longitude - mapCenter.longitude)
+        
+        // Only animate if the difference is larger than a small threshold
+        // this prevents feedback loops during user scrolling
+        if (latDiff > 0.001 || lngDiff > 0.001) {
+            map.controller.animateTo(mapCenter)
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadCrimes(startLat, startLng)
@@ -54,15 +74,18 @@ fun CrimeMapScreen(
                         setMultiTouchControls(true)
                         controller.setZoom(15.0)
                         controller.setCenter(mapCenter)
+                        
+                        addMapListener(object : MapListener {
+                            override fun onScroll(event: ScrollEvent?): Boolean {
+                                onMapMoved(this@apply.mapCenter.latitude, this@apply.mapCenter.longitude)
+                                return true
+                            }
+                            override fun onZoom(event: ZoomEvent?): Boolean = false
+                        })
+                        mapViewRef = this
                     }
                 },
                 update = { mapView ->
-                    // Handle map centering when startLat/startLng changes externally
-                    if (mapView.mapCenter.latitude != mapCenter.latitude || 
-                        mapView.mapCenter.longitude != mapCenter.longitude) {
-                        mapView.controller.animateTo(mapCenter)
-                    }
-
                     mapView.overlays.clear()
                     viewModel.visibleCrimes().forEach { crime ->
                         val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach

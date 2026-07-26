@@ -1,5 +1,6 @@
 package com.dinner.crimeapp.ui
 
+import android.util.Log
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.foundation.layout.*
@@ -9,8 +10,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
@@ -19,19 +22,15 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.collectLatest
 
 @SuppressLint("MissingPermission")
-@OptIn(FlowPreview::class)
 @Composable
 fun CrimeMapScreen(
     viewModel: CrimeMapViewModel = viewModel(),
     startLat: Double = 51.5074,
     startLng: Double = -0.1278
 ) {
+    Log.e("CrimeMapScreen", "Composing CrimeMapScreen: startLat=$startLat, startLng=$startLng")
     val state by viewModel.state.collectAsState()
     val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
 
@@ -48,16 +47,6 @@ fun CrimeMapScreen(
     }
     var lastRenderedCrimes by remember { mutableStateOf<List<com.dinner.crimeapp.data.Crime>>(emptyList()) }
 
-    val scrollFlow = remember { MutableSharedFlow<GeoPoint>(extraBufferCapacity = 1) }
-
-    LaunchedEffect(scrollFlow) {
-        scrollFlow
-            .debounce(300)
-            .collectLatest { center ->
-                pendingCenter = center
-            }
-    }
-
     LaunchedEffect(startLat, startLng) {
         viewModel.loadCrimes(startLat, startLng)
         loadedCenter = mapCenter
@@ -65,7 +54,14 @@ fun CrimeMapScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxWidth()) {
+        // Force the month picker to always draw ABOVE the map, regardless of
+        // the native MapView's own compositing layer
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(2f),
+            tonalElevation = 2.dp
+        ) {
             val months = state.crimesByMonth.keys.sortedDescending()
             LazyRowMonthPicker(
                 months = months,
@@ -74,7 +70,12 @@ fun CrimeMapScreen(
             )
         }
 
-        Box(Modifier.weight(1f)) {
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds() // hard-clip the map to its own box
+        ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx: Context ->
@@ -83,6 +84,10 @@ fun CrimeMapScreen(
                         setMultiTouchControls(true)
                         controller.setZoom(15.0)
                         controller.setCenter(mapCenter)
+
+                        // Stop the edge-glow overscroll effect from
+                        // drawing outside the view's own bounds while dragging
+                        overScrollMode = android.view.View.OVER_SCROLL_NEVER
 
                         // Fix: prevent Compose from intercepting touch events mid-drag,
                         // which otherwise causes the map to jump instead of pan smoothly
@@ -101,7 +106,7 @@ fun CrimeMapScreen(
 
                         addMapListener(object : MapListener {
                             override fun onScroll(event: ScrollEvent?): Boolean {
-                                scrollFlow.tryEmit(this@apply.mapCenter as GeoPoint)
+                                pendingCenter = this@apply.mapCenter as GeoPoint
                                 return true
                             }
                             override fun onZoom(event: ZoomEvent?): Boolean = false
@@ -163,12 +168,15 @@ fun CrimeMapScreen(
             }
         }
 
-        CrimeSummaryCard(summary = viewModel.summary())
+        CrimeSummaryCard(
+            summary = viewModel.summary(),
+            modifier = Modifier.navigationBarsPadding()
+        )
 
         if (state.error != null) {
             Text(
                 "Error loading crimes: ${state.error}",
-                modifier = Modifier.padding(8.dp),
+                modifier = Modifier.padding(8.dp).navigationBarsPadding(),
                 color = MaterialTheme.colorScheme.error
             )
         }

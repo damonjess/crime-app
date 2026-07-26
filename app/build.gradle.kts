@@ -43,6 +43,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
     implementation(libs.moshi.kotlin)
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
     implementation(libs.okhttp.logging)
 
     // Map

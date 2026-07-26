@@ -1,10 +1,12 @@
 package com.dinner.crimeapp
 
+import android.util.Log
 import android.app.Application
 import org.osmdroid.config.Configuration
 
 class CrimeApp : Application() {
     override fun onCreate() {
+        Log.e("CrimeApp", "CrimeApp.onCreate() called")
         super.onCreate()
         
         // Initialize osmdroid configuration globally

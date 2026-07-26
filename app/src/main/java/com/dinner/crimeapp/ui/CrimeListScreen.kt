@@ -28,11 +28,20 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
         CrimeSummaryCard(summary = viewModel.summary())
 
         if (crimes.isEmpty() && !state.isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("No crimes found for this area/month.")
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(
+                Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+            ) {
                 items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
                     CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
                     HorizontalDivider()

@@ -2,6 +2,7 @@ package com.dinner.crimeapp.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import com.google.android.gms.location.LocationServices
 
 @Composable
 fun CrimeHomeScreen() {
+    Log.e("CrimeHomeScreen", "Composing CrimeHomeScreen")
     val viewModel: CrimeMapViewModel = viewModel()
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
@@ -64,12 +66,16 @@ fun CrimeHomeScreen() {
     LaunchedEffect(Unit) { viewModel.loadCategories() }
 
     // Update app icon based on dominant crime in visible area
-    val dominantTheme = viewModel.getDominantTheme()
-    LaunchedEffect(dominantTheme) {
-        IconSwitcher.setTheme(context, dominantTheme)
-    }
+    // val dominantTheme = viewModel.getDominantTheme()
+    // LaunchedEffect(dominantTheme) {
+    //    IconSwitcher.setTheme(context, dominantTheme)
+    // }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Map") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("List") })
@@ -91,9 +97,11 @@ fun CrimeHomeScreen() {
             }
         }
 
-        when (tab) {
-            0 -> CrimeMapScreen(viewModel = viewModel, startLat = currentLat, startLng = currentLng)
-            1 -> CrimeListScreen(viewModel = viewModel)
+        Box(Modifier.weight(1f)) {
+            when (tab) {
+                0 -> CrimeMapScreen(viewModel = viewModel, startLat = currentLat, startLng = currentLng)
+                1 -> CrimeListScreen(viewModel = viewModel)
+            }
         }
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,11 +22,11 @@ import com.google.android.gms.location.LocationServices
 fun CrimeHomeScreen() {
     val viewModel: CrimeMapViewModel = viewModel()
     val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     val state by viewModel.state.collectAsState()
 
-    var currentLat by remember { mutableDoubleStateOf(51.5074) }
-    var currentLng by remember { mutableDoubleStateOf(-0.1278) }
+    var currentLat by rememberSaveable { mutableDoubleStateOf(51.5074) }
+    var currentLng by rememberSaveable { mutableDoubleStateOf(-0.1278) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -92,7 +93,15 @@ fun CrimeHomeScreen() {
         }
 
         when (tab) {
-            0 -> CrimeMapScreen(viewModel = viewModel, startLat = currentLat, startLng = currentLng)
+            0 -> CrimeMapScreen(
+                viewModel = viewModel,
+                startLat = currentLat,
+                startLng = currentLng,
+                onMapMoved = { lat, lng ->
+                    currentLat = lat
+                    currentLng = lng
+                }
+            )
             1 -> CrimeListScreen(viewModel = viewModel)
         }
     }

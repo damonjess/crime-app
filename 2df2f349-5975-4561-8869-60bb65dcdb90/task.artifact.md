@@ -1,0 +1,3 @@
+- [x] Update `CrimeMapScreen.kt` to prevent unwanted snapping and track map movement
+- [x] Update `CrimeHomeScreen.kt` to persist map state and handle navigation
+- [x] Verify changes

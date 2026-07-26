@@ -20,7 +20,7 @@ fun CrimeSummaryCard(summary: CrimeSummary, modifier: Modifier = Modifier) {
 
             SummaryRow("Total crimes", "${summary.totalCrimes}")
             summary.mostCommonCategory?.let {
-                SummaryRow("Most common", "$it (${summary.mostCommonCategoryCount})")
+                SummaryRow("Most common", "${CrimeCategoryColors.displayName(it)} (${summary.mostCommonCategoryCount})")
             }
             SummaryRow("Resolved / outcome known", "${summary.resolvedCount}")
             SummaryRow("Under investigation", "${summary.underInvestigationCount}")

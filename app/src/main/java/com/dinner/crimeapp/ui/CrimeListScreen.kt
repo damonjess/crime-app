@@ -26,6 +26,7 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
 
     Column(Modifier.fillMaxSize()) {
         CrimeSummaryCard(summary = viewModel.summary())
+        CrimeCategoryBreakdownCard(breakdown = viewModel.categoryBreakdown())
         CrimeTrendChart(crimesByMonth = state.crimesByMonth)
 
         if (crimes.isEmpty() && !state.isLoading) {
@@ -71,11 +72,15 @@ fun CrimeListItem(crime: Crime, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
         leadingContent = {
-            Icon(getIconForCategory(crime.category), contentDescription = null)
+            Icon(
+                imageVector = getIconForCategory(crime.category),
+                contentDescription = null,
+                tint = CrimeCategoryColors.colorFor(crime.category)
+            )
         },
         headlineContent = {
             Text(
-                crime.category.replace("-", " ").replaceFirstChar { it.uppercase() },
+                CrimeCategoryColors.displayName(crime.category),
                 fontWeight = FontWeight.SemiBold
             )
         },
@@ -102,7 +107,7 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
 
     Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 32.dp)) {
         Text(
-            crime.category.replace("-", " ").replaceFirstChar { it.uppercase() },
+            CrimeCategoryColors.displayName(crime.category),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
@@ -135,7 +140,7 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
             else -> history.forEachIndexed { index, entry ->
                 Column(Modifier.padding(vertical = 6.dp)) {
                     Text(
-                        "${index + 1}. ${entry.category.replace("-", " ").replaceFirstChar { it.uppercase() }}",
+                        "${index + 1}. ${CrimeCategoryColors.displayName(entry.category)}",
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(

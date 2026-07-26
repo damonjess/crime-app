@@ -22,7 +22,9 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import com.dinner.crimeapp.data.Crime
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
 @Composable
 fun CrimeMapScreen(
@@ -41,6 +43,8 @@ fun CrimeMapScreen(
     
     // Tracks the last loaded center we actually moved the map to
     var lastMovedCenter by remember { mutableStateOf(loadedCenter) }
+
+    var selectedCrime by remember { mutableStateOf<Crime?>(null) }
 
     val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory) {
         viewModel.visibleCrimes()
@@ -128,8 +132,14 @@ fun CrimeMapScreen(
                             val lng = crime.location.longitude.toDoubleOrNull() ?: return@forEach
                             val marker = Marker(mapView).apply {
                                 position = GeoPoint(lat, lng)
-                                title = crime.category.replace("-", " ")
+                                icon = MarkerIconFactory.dotFor(mapView.context, crime.category)
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER) // center dot, not pin-style anchor
+                                title = CrimeCategoryColors.displayName(crime.category)
                                 snippet = "Month: ${crime.month} · Status: ${crime.outcomeStatus?.category ?: "Under investigation"}"
+                                setOnMarkerClickListener { _, _ ->
+                                    selectedCrime = crime
+                                    true // consume the click, don't show the default InfoWindow bubble
+                                }
                             }
                             mapView.overlays.add(marker)
                         }
@@ -178,6 +188,20 @@ fun CrimeMapScreen(
                 modifier = Modifier.padding(8.dp).navigationBarsPadding(),
                 color = MaterialTheme.colorScheme.error
             )
+        }
+    }
+
+    selectedCrime?.let { crime ->
+        LaunchedEffect(crime.persistentId) {
+            viewModel.loadOutcomeHistory(crime.persistentId)
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                selectedCrime = null
+                viewModel.clearOutcomeHistory()
+            }
+        ) {
+            CrimeDetailContent(crime, viewModel)
         }
     }
 }

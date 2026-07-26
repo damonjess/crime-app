@@ -27,6 +27,8 @@ data class CrimeSummary(
     val underInvestigationCount: Int
 )
 
+data class CategoryCount(val category: String, val count: Int)
+
 class CrimeMapViewModel(
     private val repository: CrimeRepository = CrimeRepository()
 ) : ViewModel() {
@@ -103,6 +105,15 @@ class CrimeMapViewModel(
             resolvedCount = resolved,
             underInvestigationCount = unresolved
         )
+    }
+
+    fun categoryBreakdown(): List<CategoryCount> {
+        return visibleCrimes()
+            .groupingBy { it.category }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { CategoryCount(it.key, it.value) }
     }
 
     fun getDominantTheme(): IconSwitcher.CrimeTheme {

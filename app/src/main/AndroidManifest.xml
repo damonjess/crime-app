@@ -24,47 +24,11 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.CrimeApp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
         </activity>
-
-        <activity-alias
-            android:name=".DefaultLauncher"
-            android:targetActivity="com.dinner.crimeapp.MainActivity"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".TheftLauncher"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_theft"
-            android:label="Theft Map"
-            android:roundIcon="@mipmap/ic_launcher_theft"
-            android:targetActivity="com.dinner.crimeapp.MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".ViolenceLauncher"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_violence"
-            android:label="Violence Map"
-            android:roundIcon="@mipmap/ic_launcher_violence"
-            android:targetActivity="com.dinner.crimeapp.MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
 
     </application>
 

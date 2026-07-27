@@ -4,12 +4,37 @@ import android.util.Log
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import retrofit2.HttpException
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 class CrimeRepository(
     private val api: PoliceApiService = PoliceApi.service
 ) {
+    // Cap how many requests are in flight at once, shared across crimes + stops
+    private val requestSemaphore = Semaphore(permits = 4)
+
+    private suspend fun <T> throttled(block: suspend () -> T): T =
+        requestSemaphore.withPermit {
+            var attempt = 0
+            while (true) {
+                try {
+                    return@withPermit block()
+                } catch (e: HttpException) {
+                    if (e.code() == 429 && attempt < 2) {
+                        attempt++
+                        delay(500L * attempt)
+                    } else {
+                        throw e
+                    }
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            block()
+        }
 
     /** Search for a place or postcode. */
     suspend fun searchPlace(query: String): List<GeocodeResult> =
@@ -35,7 +60,7 @@ class CrimeRepository(
         lat: Double,
         lng: Double,
         monthsBack: Int = 6
-    ): Map<String, List<Crime>> = coroutineScope {
+    ): Triple<Map<String, List<Crime>>, Boolean, String?> = coroutineScope {
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM")
         val latestAvailable = YearMonth.now().minusMonths(2)
 
@@ -46,20 +71,32 @@ class CrimeRepository(
         // Fire all requests at once instead of one after another
         val results = months.map { month ->
             async {
-                month to runCatching { api.getCrimesNear(lat, lng, month) }
-                    .onFailure { e -> Log.e("CrimeRepository", "Error fetching crimes for $month", e) }
-                    .getOrDefault(emptyList())
+                var rateLimited = false
+                var errorMsg: String? = null
+                val data = runCatching {
+                    throttled { api.getCrimesNear(lat, lng, month) }
+                }.onFailure { e ->
+                    if (e is HttpException && e.code() == 429) rateLimited = true
+                    errorMsg = e.message
+                    Log.e("CrimeRepository", "Error fetching crimes for $month", e)
+                }.getOrDefault(emptyList())
+
+                Triple(month, data, rateLimited to errorMsg)
             }
         }.awaitAll()
 
-        results.toMap()
+        val map = results.associate { it.first to it.second }
+        val anyRateLimited = results.any { it.third.first }
+        val firstError = results.mapNotNull { it.third.second }.firstOrNull()
+
+        Triple(map, anyRateLimited, firstError)
     }
 
     suspend fun getStopSearchesForRange(
         lat: Double,
         lng: Double,
         monthsBack: Int = 6
-    ): Map<String, List<StopSearch>> = coroutineScope {
+    ): Triple<Map<String, List<StopSearch>>, Boolean, String?> = coroutineScope {
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM")
         // Stop searches often have a slightly longer delay or different availability force-by-force.
         // We'll try to get the most recent 6 months, starting from 2 months ago.
@@ -73,15 +110,25 @@ class CrimeRepository(
 
         val results = months.map { month ->
             async {
-                month to runCatching { getStopSearches(lat, lng, month) }
-                    .onFailure { e -> 
-                        Log.e("CrimeRepository", "Error fetching stops for $month at $lat, $lng", e) 
-                    }
-                    .getOrDefault(emptyList())
+                var rateLimited = false
+                var errorMsg: String? = null
+                val data = runCatching {
+                    throttled { getStopSearches(lat, lng, month) }
+                }.onFailure { e ->
+                    if (e is HttpException && e.code() == 429) rateLimited = true
+                    errorMsg = e.message
+                    Log.e("CrimeRepository", "Error fetching stops for $month at $lat, $lng", e)
+                }.getOrDefault(emptyList())
+
+                Triple(month, data, rateLimited to errorMsg)
             }
         }.awaitAll()
 
-        results.toMap()
+        val map = results.associate { it.first to it.second }
+        val anyRateLimited = results.any { it.third.first }
+        val firstError = results.mapNotNull { it.third.second }.firstOrNull()
+
+        Triple(map, anyRateLimited, firstError)
     }
 
     suspend fun getOutcomeHistory(persistentId: String): List<OutcomeEntry> =

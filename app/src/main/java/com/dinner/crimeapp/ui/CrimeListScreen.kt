@@ -48,6 +48,7 @@ fun CrimeListScreen(
         }
 
         val isEmpty = if (state.viewMode == ViewMode.CRIMES) crimes.isEmpty() else stops.isEmpty()
+        val isRateLimited = if (state.viewMode == ViewMode.CRIMES) state.crimesRateLimited else state.stopsRateLimited
 
         if (isEmpty && !state.isLoading) {
             Box(
@@ -57,11 +58,20 @@ fun CrimeListScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    if (state.viewMode == ViewMode.CRIMES) "No crimes found for this area/month." 
+                    if (isRateLimited) "Rate limited — try again in a moment."
+                    else if (state.viewMode == ViewMode.CRIMES) "No crimes found for this area/month." 
                     else "No stop and search records found."
                 )
             }
         } else {
+            if (isRateLimited) {
+                Text(
+                    "Rate limited — some data may be missing.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             LazyColumn(
                 Modifier
                     .fillMaxSize()

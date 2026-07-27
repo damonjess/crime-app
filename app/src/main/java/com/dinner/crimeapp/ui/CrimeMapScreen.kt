@@ -225,6 +225,16 @@ fun CrimeMapScreen(
                 color = MaterialTheme.colorScheme.error
             )
         }
+
+        val rateLimited = if (state.viewMode == ViewMode.CRIMES) state.crimesRateLimited else state.stopsRateLimited
+        if (rateLimited) {
+            Text(
+                "Rate limited — some data may be missing. Try again in a moment.",
+                modifier = Modifier.padding(8.dp).navigationBarsPadding(),
+                color = MaterialTheme.colorScheme.secondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 
     selectedCrime?.let { crime ->

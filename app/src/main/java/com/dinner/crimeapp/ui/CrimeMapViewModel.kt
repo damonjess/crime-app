@@ -27,6 +27,8 @@ data class CrimeMapState(
     val isLoading: Boolean = false,
     val crimesByMonth: Map<String, List<Crime>> = emptyMap(),
     val stopSearchesByMonth: Map<String, List<StopSearch>> = emptyMap(),
+    val crimesRateLimited: Boolean = false,
+    val stopsRateLimited: Boolean = false,
     val viewMode: ViewMode = ViewMode.CRIMES,
     val selectedMonth: String? = null, // null = show all fetched months
     val categories: List<com.dinner.crimeapp.data.CrimeCategory> = emptyList(),
@@ -108,7 +110,9 @@ class CrimeMapViewModel(
                 isLoading = true,
                 error = null,
                 crimesByMonth = emptyMap(),
-                stopSearchesByMonth = emptyMap()
+                stopSearchesByMonth = emptyMap(),
+                crimesRateLimited = false,
+                stopsRateLimited = false
             )
             
             val crimesDeferred = async { 
@@ -121,12 +125,16 @@ class CrimeMapViewModel(
             val crimesResult = crimesDeferred.await()
             val stopsResult = stopsDeferred.await()
 
-            val stopsData = stopsResult.getOrDefault(emptyMap())
+            val (crimesData, crimesLimited, crimesError) = crimesResult.getOrDefault(Triple(emptyMap(), false, null))
+            val (stopsData, stopsLimited, stopsError) = stopsResult.getOrDefault(Triple(emptyMap(), false, null))
+
             _state.value = _state.value.copy(
                 isLoading = false,
-                crimesByMonth = crimesResult.getOrDefault(emptyMap()),
+                crimesByMonth = crimesData,
                 stopSearchesByMonth = stopsData,
-                error = crimesResult.exceptionOrNull()?.message ?: stopsResult.exceptionOrNull()?.message
+                crimesRateLimited = crimesLimited,
+                stopsRateLimited = stopsLimited,
+                error = crimesError ?: stopsError ?: crimesResult.exceptionOrNull()?.message ?: stopsResult.exceptionOrNull()?.message
             )
         }
     }

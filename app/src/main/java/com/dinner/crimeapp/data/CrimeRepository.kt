@@ -7,7 +7,16 @@ import kotlinx.coroutines.coroutineScope
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-class CrimeRepository(private val api: PoliceApiService = PoliceApi.service) {
+class CrimeRepository(
+    private val api: PoliceApiService = PoliceApi.service
+) {
+
+    /** Search for a place or postcode. */
+    suspend fun searchPlace(query: String): List<GeocodeResult> =
+        runCatching { NominatimApi.service.search(query) }.getOrDefault(emptyList())
+
+    suspend fun getStopSearches(lat: Double, lng: Double, month: String? = null): List<StopSearch> =
+        api.getStopSearches(lat, lng, month)
 
     /** Fetch crimes for a single month near a point. month=null → latest available. */
     suspend fun getCrimes(lat: Double, lng: Double, month: String? = null): List<Crime> {
@@ -39,6 +48,35 @@ class CrimeRepository(private val api: PoliceApiService = PoliceApi.service) {
             async {
                 month to runCatching { api.getCrimesNear(lat, lng, month) }
                     .onFailure { e -> Log.e("CrimeRepository", "Error fetching crimes for $month", e) }
+                    .getOrDefault(emptyList())
+            }
+        }.awaitAll()
+
+        results.toMap()
+    }
+
+    suspend fun getStopSearchesForRange(
+        lat: Double,
+        lng: Double,
+        monthsBack: Int = 6
+    ): Map<String, List<StopSearch>> = coroutineScope {
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM")
+        // Stop searches often have a slightly longer delay or different availability force-by-force.
+        // We'll try to get the most recent 6 months, starting from 2 months ago.
+        val latestAvailable = YearMonth.now().minusMonths(2)
+
+        val months = (0 until monthsBack).map { i ->
+            latestAvailable.minusMonths(i.toLong()).format(formatter)
+        }
+
+        Log.d("CrimeRepository", "Fetching stops for $lat, $lng over months: $months")
+
+        val results = months.map { month ->
+            async {
+                month to runCatching { getStopSearches(lat, lng, month) }
+                    .onFailure { e -> 
+                        Log.e("CrimeRepository", "Error fetching stops for $month at $lat, $lng", e) 
+                    }
                     .getOrDefault(emptyList())
             }
         }.awaitAll()

@@ -22,6 +22,8 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import com.dinner.crimeapp.data.Crime
+import com.dinner.crimeapp.data.StopSearch
+import android.graphics.Color as AndroidColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
@@ -29,7 +31,8 @@ import com.dinner.crimeapp.data.Crime
 fun CrimeMapScreen(
     viewModel: CrimeMapViewModel = viewModel(),
     startLat: Double = 51.5074,
-    startLng: Double = -0.1278
+    startLng: Double = -0.1278,
+    onLocationChanged: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
     val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
@@ -43,13 +46,17 @@ fun CrimeMapScreen(
     var lastMovedCenter by remember { mutableStateOf(loadedCenter) }
 
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
+    var selectedStopSearch by remember { mutableStateOf<StopSearch?>(null) }
 
-    val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory) {
+    val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory, state.viewMode) {
         viewModel.visibleCrimes()
+    }
+    
+    val visibleStops = remember(state.stopSearchesByMonth, state.selectedMonth, state.viewMode) {
+        viewModel.visibleStopSearches()
     }
 
     LaunchedEffect(startLat, startLng) {
-        viewModel.loadCrimes(startLat, startLng)
         loadedCenter = mapCenter
         pendingCenter = null
     }
@@ -118,31 +125,57 @@ fun CrimeMapScreen(
                     // Move map only when loadedCenter changes (e.g. from "Use my location" 
                     // or "Search this area" after fetching new data)
                     if (loadedCenter != lastMovedCenter) {
-                        mapView.controller.animateTo(loadedCenter)
+                        mapView.controller.setCenter(loadedCenter) // Immediate jump
+                        mapView.controller.animateTo(loadedCenter) // Followed by smooth sync if needed
                         lastMovedCenter = loadedCenter
                     }
 
-                    // Only rebuild markers if the crime data has actually changed
-                    if (mapView.tag != visibleCrimes) {
+                    val currentData = if (state.viewMode == ViewMode.CRIMES) visibleCrimes else visibleStops
+                    val dataHash = Pair(state.viewMode, currentData).hashCode()
+
+                    // Only rebuild markers if the data or view mode has actually changed
+                    if (mapView.tag != dataHash) {
                         mapView.overlays.removeAll { it is Marker }
-                        visibleCrimes.forEach { crime ->
-                            val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
-                            val lng = crime.location.longitude.toDoubleOrNull() ?: return@forEach
-                            val marker = Marker(mapView).apply {
-                                position = GeoPoint(lat, lng)
-                                icon = MarkerIconFactory.dotFor(mapView.context, crime.category)
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER) // center dot, not pin-style anchor
-                                title = CrimeCategoryColors.displayName(crime.category)
-                                snippet = "Month: ${crime.month} · Status: ${crime.outcomeStatus?.category ?: "Under investigation"}"
-                                setOnMarkerClickListener { _, _ ->
-                                    selectedCrime = crime
-                                    true // consume the click, don't show the default InfoWindow bubble
+                        
+                        if (state.viewMode == ViewMode.CRIMES) {
+                            visibleCrimes.forEach { crime ->
+                                val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
+                                val lng = crime.location.longitude.toDoubleOrNull() ?: return@forEach
+                                val marker = Marker(mapView).apply {
+                                    position = GeoPoint(lat, lng)
+                                    icon = MarkerIconFactory.dotFor(mapView.context, crime.category)
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                    title = CrimeCategoryColors.displayName(crime.category)
+                                    snippet = "Month: ${crime.month}"
+                                    setOnMarkerClickListener { _, _ ->
+                                        selectedCrime = crime
+                                        true
+                                    }
                                 }
+                                mapView.overlays.add(marker)
                             }
-                            mapView.overlays.add(marker)
+                        } else {
+                            visibleStops.forEach { stop ->
+                                val lat = stop.location?.latitude?.toDoubleOrNull() ?: return@forEach
+                                val lng = stop.location?.longitude?.toDoubleOrNull() ?: return@forEach
+                                val marker = Marker(mapView).apply {
+                                    position = GeoPoint(lat, lng)
+                                    // Blue dot for stop searches
+                                    icon = MarkerIconFactory.createCustomDot(mapView.context, AndroidColor.BLUE)
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                    title = stop.objectOfSearch ?: "Stop and search"
+                                    snippet = "Outcome: ${stop.outcome ?: "No outcome recorded"}"
+                                    setOnMarkerClickListener { _, _ ->
+                                        selectedStopSearch = stop
+                                        true
+                                    }
+                                }
+                                mapView.overlays.add(marker)
+                            }
                         }
+                        
                         mapView.invalidate()
-                        mapView.tag = visibleCrimes
+                        mapView.tag = dataHash
                     }
                 }
             )
@@ -161,7 +194,7 @@ fun CrimeMapScreen(
                 if (movedFar) {
                     Button(
                         onClick = {
-                            viewModel.loadCrimes(center.latitude, center.longitude)
+                            onLocationChanged(center.latitude, center.longitude)
                             loadedCenter = center
                             pendingCenter = null
                         },
@@ -169,20 +202,23 @@ fun CrimeMapScreen(
                             .align(Alignment.TopCenter)
                             .padding(top = 12.dp)
                     ) {
-                        Text("Search this area")
+                        Text(if (state.viewMode == ViewMode.CRIMES) "Search this area" else "Search stops here")
                     }
                 }
             }
         }
 
-        CrimeSummaryCard(
-            summary = viewModel.summary(),
-            modifier = Modifier.navigationBarsPadding()
-        )
+        if (state.viewMode == ViewMode.CRIMES) {
+            CrimeSummaryCard(
+                summary = viewModel.summary(),
+                modifier = Modifier.navigationBarsPadding()
+            )
+        }
 
         if (state.error != null) {
+            val errorPrefix = if (state.viewMode == ViewMode.CRIMES) "Error loading crimes" else "Error loading stops"
             Text(
-                "Error loading crimes: ${state.error}",
+                "$errorPrefix: ${state.error}",
                 modifier = Modifier.padding(8.dp).navigationBarsPadding(),
                 color = MaterialTheme.colorScheme.error
             )
@@ -200,6 +236,14 @@ fun CrimeMapScreen(
             }
         ) {
             CrimeDetailContent(crime, viewModel)
+        }
+    }
+
+    selectedStopSearch?.let { stop ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedStopSearch = null }
+        ) {
+            StopSearchDetailContent(stop)
         }
     }
 }

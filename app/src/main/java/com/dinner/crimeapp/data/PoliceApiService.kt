@@ -22,4 +22,11 @@ interface PoliceApiService {
     suspend fun getOutcomeHistory(
         @Path("persistentId") persistentId: String
     ): OutcomeHistoryResponse
+
+    @GET("stops-street")
+    suspend fun getStopSearches(
+        @Query("lat") lat: Double,
+        @Query("lng") lng: Double,
+        @Query("date") month: String? = null
+    ): List<StopSearch>
 }

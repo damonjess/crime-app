@@ -14,29 +14,44 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dinner.crimeapp.data.Crime
+import com.dinner.crimeapp.data.StopSearch
+import com.dinner.crimeapp.ui.ViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CrimeListScreen(viewModel: CrimeMapViewModel) {
     val state by viewModel.state.collectAsState()
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
+    var selectedStopSearch by remember { mutableStateOf<StopSearch?>(null) }
 
     val crimes = viewModel.visibleCrimes()
         .sortedByDescending { it.month } // most recent first
 
-    Column(Modifier.fillMaxSize()) {
-        CrimeSummaryCard(summary = viewModel.summary())
-        CrimeCategoryBreakdownCard(breakdown = viewModel.categoryBreakdown())
-        CrimeTrendChart(crimesByMonth = state.crimesByMonth)
+    val stops = viewModel.visibleStopSearches()
+        .sortedByDescending { it.datetime }
 
-        if (crimes.isEmpty() && !state.isLoading) {
+    Column(Modifier.fillMaxSize()) {
+        if (state.viewMode == ViewMode.CRIMES) {
+            CrimeSummaryCard(summary = viewModel.summary())
+            CrimeCategoryBreakdownCard(breakdown = viewModel.categoryBreakdown())
+            CrimeTrendChart(crimesByMonth = state.crimesByMonth)
+        } else {
+            StopSearchSummaryCard(summary = viewModel.stopSearchSummary())
+        }
+
+        val isEmpty = if (state.viewMode == ViewMode.CRIMES) crimes.isEmpty() else stops.isEmpty()
+
+        if (isEmpty && !state.isLoading) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .navigationBarsPadding(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No crimes found for this area/month.")
+                Text(
+                    if (state.viewMode == ViewMode.CRIMES) "No crimes found for this area/month." 
+                    else "No stop and search records found."
+                )
             }
         } else {
             LazyColumn(
@@ -44,9 +59,16 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
                     .fillMaxSize()
                     .navigationBarsPadding()
             ) {
-                items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
-                    CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
-                    HorizontalDivider()
+                if (state.viewMode == ViewMode.CRIMES) {
+                    items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
+                        CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
+                        HorizontalDivider()
+                    }
+                } else {
+                    items(stops) { stop ->
+                        StopSearchListItem(stop = stop, onClick = { selectedStopSearch = stop })
+                        HorizontalDivider()
+                    }
                 }
             }
         }
@@ -64,6 +86,65 @@ fun CrimeListScreen(viewModel: CrimeMapViewModel) {
         ) {
             CrimeDetailContent(crime, viewModel)
         }
+    }
+
+    selectedStopSearch?.let { stop ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedStopSearch = null }
+        ) {
+            StopSearchDetailContent(stop)
+        }
+    }
+}
+
+@Composable
+fun StopSearchListItem(stop: StopSearch, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        headlineContent = {
+            Text(
+                stop.objectOfSearch ?: "Stop and search",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        supportingContent = {
+            Column {
+                Text(stop.location?.street?.name ?: "Unknown location")
+                Text("${stop.ageRange ?: "Age unknown"} · ${stop.gender ?: "Gender not recorded"}")
+            }
+        },
+        trailingContent = {
+            Text(
+                stop.outcome?.take(20) ?: "No outcome",
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    )
+}
+
+@Composable
+fun StopSearchSummaryCard(summary: StopSearchSummary) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Stop and Search Summary", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                SummaryStat("Total", summary.total.toString())
+                SummaryStat("Common Type", summary.mostCommonType ?: "N/A")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryStat(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -154,7 +235,36 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
+fun StopSearchDetailContent(stop: StopSearch) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .navigationBarsPadding()
+    ) {
+        Text(
+            stop.objectOfSearch ?: "Stop and search",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(12.dp))
+
+        DetailRow("Date", stop.datetime?.take(10) ?: "Unknown")
+        DetailRow("Time", stop.datetime?.substringAfter("T")?.take(5) ?: "Unknown")
+        DetailRow("Type", stop.type ?: "N/A")
+        DetailRow("Gender", stop.gender ?: "N/A")
+        DetailRow("Age range", stop.ageRange ?: "N/A")
+        DetailRow("Ethnicity", stop.selfDefinedEthnicity ?: "N/A")
+        DetailRow("Outcome", stop.outcome ?: "N/A")
+
+        if (stop.location?.street != null) {
+            DetailRow("Location", stop.location.street.name)
+        }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text(
             label,

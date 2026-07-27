@@ -3,11 +3,10 @@ package com.dinner.crimeapp.data
 import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-object PoliceApi {
+object NominatimApi {
     private val userAgentInterceptor = Interceptor { chain ->
         val request = chain.request().newBuilder()
             .header("User-Agent", "com.dinner.crimeapp")
@@ -17,18 +16,14 @@ object PoliceApi {
 
     private val client = OkHttpClient.Builder()
         .addInterceptor(userAgentInterceptor)
-        .addInterceptor(HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.NONE
-        })
         .build()
 
-    private val moshi = Moshi.Builder()
-        .build()
+    private val moshi = Moshi.Builder().build()
 
-    val service: PoliceApiService = Retrofit.Builder()
-        .baseUrl("https://data.police.uk/api/")
+    val service: NominatimApiService = Retrofit.Builder()
+        .baseUrl("https://nominatim.openstreetmap.org/")
         .client(client)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
-        .create(PoliceApiService::class.java)
+        .create(NominatimApiService::class.java)
 }

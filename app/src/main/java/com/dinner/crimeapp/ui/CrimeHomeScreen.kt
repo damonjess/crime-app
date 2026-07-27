@@ -65,10 +65,6 @@ fun CrimeHomeScreen() {
         }
     }
 
-    LaunchedEffect(currentLat, currentLng) {
-        viewModel.loadCrimes(currentLat, currentLng)
-    }
-
     LaunchedEffect(Unit) { viewModel.loadCategories() }
 
     Column(
@@ -143,7 +139,11 @@ fun CrimeHomeScreen() {
                         currentLng = lng
                     }
                 )
-                1 -> CrimeListScreen(viewModel = viewModel)
+                1 -> CrimeListScreen(
+                    viewModel = viewModel,
+                    lat = currentLat,
+                    lng = currentLng
+                )
             }
         }
     }

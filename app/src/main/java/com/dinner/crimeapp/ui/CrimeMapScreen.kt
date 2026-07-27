@@ -57,6 +57,7 @@ fun CrimeMapScreen(
     }
 
     LaunchedEffect(startLat, startLng) {
+        viewModel.loadCrimes(startLat, startLng)
         loadedCenter = mapCenter
         pendingCenter = null
     }
@@ -194,6 +195,7 @@ fun CrimeMapScreen(
                 if (movedFar) {
                     Button(
                         onClick = {
+                            viewModel.loadCrimes(center.latitude, center.longitude)
                             onLocationChanged(center.latitude, center.longitude)
                             loadedCenter = center
                             pendingCenter = null

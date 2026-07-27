@@ -19,7 +19,15 @@ import com.dinner.crimeapp.ui.ViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CrimeListScreen(viewModel: CrimeMapViewModel) {
+fun CrimeListScreen(
+    viewModel: CrimeMapViewModel,
+    lat: Double,
+    lng: Double
+) {
+    LaunchedEffect(lat, lng) {
+        viewModel.loadCrimes(lat, lng)
+    }
+
     val state by viewModel.state.collectAsState()
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
     var selectedStopSearch by remember { mutableStateOf<StopSearch?>(null) }

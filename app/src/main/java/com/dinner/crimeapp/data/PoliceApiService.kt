@@ -29,4 +29,39 @@ interface PoliceApiService {
         @Query("lng") lng: Double,
         @Query("date") month: String? = null
     ): List<StopSearch>
+
+    @GET("locate-neighbourhood")
+    suspend fun locateNeighbourhood(
+        @Query("q") latLng: String
+    ): NeighbourhoodRef
+
+    @GET("{force}/{neighbourhood}")
+    suspend fun getNeighbourhood(
+        @Path("force") force: String,
+        @Path("neighbourhood") neighbourhood: String
+    ): Neighbourhood
+
+    @GET("{force}/{neighbourhood}/people")
+    suspend fun getNeighbourhoodTeam(
+        @Path("force") force: String,
+        @Path("neighbourhood") neighbourhood: String
+    ): List<NeighbourhoodOfficer>
+
+    @GET("{force}/{neighbourhood}/events")
+    suspend fun getNeighbourhoodEvents(
+        @Path("force") force: String,
+        @Path("neighbourhood") neighbourhood: String
+    ): List<NeighbourhoodEvent>
+
+    @GET("{force}/{neighbourhood}/boundary")
+    suspend fun getNeighbourhoodBoundary(
+        @Path("force") force: String,
+        @Path("neighbourhood") neighbourhood: String
+    ): List<BoundaryPoint>
+
+    @GET("forces/{force}")
+    suspend fun getForceDetails(
+        @Path("force") force: String
+    ): ForceDetails
 }
+

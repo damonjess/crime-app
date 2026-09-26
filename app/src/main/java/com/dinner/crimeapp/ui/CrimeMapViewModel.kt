@@ -1,12 +1,16 @@
 package com.dinner.crimeapp.ui
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dinner.crimeapp.data.AreaInfo
 import com.dinner.crimeapp.data.Crime
 import com.dinner.crimeapp.data.CrimeRepository
 import com.dinner.crimeapp.data.OutcomeEntry
 import com.dinner.crimeapp.data.GeocodeResult
 import com.dinner.crimeapp.data.StopSearch
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,9 +61,13 @@ data class CrimeSummary(
 data class CategoryCount(val category: String, val count: Int)
 
 @OptIn(FlowPreview::class)
-class CrimeMapViewModel(
+class CrimeMapViewModel(application: Application) : AndroidViewModel(application) {
+
+    // Property initializer (not a constructor param) so the default
+    // AndroidViewModelFactory can instantiate this class via reflection.
     private val repository: CrimeRepository = CrimeRepository()
-) : ViewModel() {
+
+    private val appContext: Context = application
 
     private val _state = MutableStateFlow(CrimeMapState())
     val state: StateFlow<CrimeMapState> = _state.asStateFlow()
@@ -78,9 +86,43 @@ class CrimeMapViewModel(
 
     private val _searchQueryFlow = MutableStateFlow("")
 
+    // ---------- Area / neighbourhood state ----------
+    private val _areaInfo = MutableStateFlow<AreaInfo?>(null)
+    val areaInfo: StateFlow<AreaInfo?> = _areaInfo.asStateFlow()
+
+    private val _areaLocationName = MutableStateFlow<String?>(null)
+    val areaLocationName: StateFlow<String?> = _areaLocationName.asStateFlow()
+
+    private val _team = MutableStateFlow<List<com.dinner.crimeapp.data.NeighbourhoodOfficer>>(emptyList())
+    val team: StateFlow<List<com.dinner.crimeapp.data.NeighbourhoodOfficer>> = _team.asStateFlow()
+
+    private val _events = MutableStateFlow<List<com.dinner.crimeapp.data.NeighbourhoodEvent>>(emptyList())
+    val events: StateFlow<List<com.dinner.crimeapp.data.NeighbourhoodEvent>> = _events.asStateFlow()
+
+    private val _savedPlaces = MutableStateFlow<List<SavedPlace>>(emptyList())
+    val savedPlaces: StateFlow<List<SavedPlace>> = _savedPlaces.asStateFlow()
+
+    private val _boundary = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val boundary: StateFlow<List<Pair<Double, Double>>> = _boundary.asStateFlow()
+
+    /** Fetch and expose the neighbourhood boundary polygon for outline drawing. */
+    fun loadBoundary(force: String, neighbourhood: String) {
+        viewModelScope.launch {
+            val pts = runCatching { repository.getBoundary(force, neighbourhood) }
+                .getOrDefault(emptyList())
+                .mapNotNull { p ->
+                    val lat = p.latitude.toDoubleOrNull()
+                    val lng = p.longitude.toDoubleOrNull()
+                    if (lat != null && lng != null) lat to lng else null
+                }
+            _boundary.value = pts
+        }
+    }
+
     init {
         loadCategories()
         setupSearchDebounce()
+        _savedPlaces.value = SavedPlacesStore.load(appContext)
     }
 
     private fun setupSearchDebounce() {
@@ -136,7 +178,39 @@ class CrimeMapViewModel(
                 stopsRateLimited = stopsLimited,
                 error = crimesError ?: stopsError ?: crimesResult.exceptionOrNull()?.message ?: stopsResult.exceptionOrNull()?.message
             )
+
+            loadAreaContext(lat, lng)
         }
+    }
+
+    /** Loads neighbourhood/force/reverse-geocoded place name for the current point. */
+    private fun loadAreaContext(lat: Double, lng: Double) {
+        viewModelScope.launch {
+            _boundary.value = emptyList()
+            _areaInfo.value = runCatching { repository.getAreaInfo(lat, lng) }.getOrNull()
+            _areaInfo.value?.let { loadBoundary(it.forceId, it.neighbourhoodId) }
+            _team.value = _areaInfo.value?.let {
+                runCatching { repository.getTeam(it.forceId, it.neighbourhoodId) }.getOrDefault(emptyList())
+            } ?: emptyList()
+            _events.value = _areaInfo.value?.let {
+                runCatching { repository.getEvents(it.forceId, it.neighbourhoodId) }.getOrDefault(emptyList())
+            } ?: emptyList()
+            _areaLocationName.value = runCatching {
+                repository.reverseGeocode(lat, lng)?.let { resp ->
+                    resp.address?.let { addr ->
+                        listOfNotNull(addr["town"], addr["city"], addr["village"], addr["county"]).firstOrNull()
+                    } ?: resp.name
+                }
+            }.getOrNull()
+        }
+    }
+
+    fun saveCurrentPlace(name: String, lat: Double, lng: Double) {
+        _savedPlaces.value = SavedPlacesStore.add(appContext, name, lat, lng)
+    }
+
+    fun removeSavedPlace(id: String) {
+        _savedPlaces.value = SavedPlacesStore.remove(appContext, id)
     }
 
     fun setViewMode(mode: ViewMode) {
@@ -270,4 +344,17 @@ class CrimeMapViewModel(
     fun clearSearch() {
         _state.value = _state.value.copy(searchQuery = "", searchResults = emptyList())
     }
+
+    /** Convenience for insights screens — stats over currently visible crimes. */
+    fun stats(): Stats = CrimeStats.compute(visibleCrimes())
+
+    fun stopStats(): StopStats = CrimeStats.computeStopStats(visibleStopSearches())
+
+    /** Months covered by the current dataset, newest first. */
+    fun monthsCovered(): List<String> = state.value.crimesByMonth.keys.sortedDescending()
+
+    fun areaLabel(): String = _areaLocationName.value
+        ?: _areaInfo.value?.neighbourhoodName
+        ?: _areaInfo.value?.forceName
+        ?: "Selected area"
 }

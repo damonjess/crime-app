@@ -1,17 +1,28 @@
-# IDE
+# IDE & Tooling
 *.iml
 .idea/
 .artifacts/
 .navigation/
+.freebuff/
+.kotlin/
+2df2f349-*/
 
-# Gradle
+# Gradle & Build
 .gradle/
 build/
+app/build/
 
-# Local configuration
+# Local configuration & Secrets
 local.properties
+*.keystore
+*.jks
+*.p12
+*.pem
+google-services.json
+GoogleService-Info.plist
 
-# Android Studio
+# Temp & Dump files
+view*.xml
 captures/
 .externalNativeBuild/
 .cxx/
@@ -19,3 +30,4 @@ captures/
 # OS
 .DS_Store
 Thumbs.db
+

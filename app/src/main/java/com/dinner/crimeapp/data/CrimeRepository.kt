@@ -134,4 +134,66 @@ class CrimeRepository(
     suspend fun getOutcomeHistory(persistentId: String): List<OutcomeEntry> =
         runCatching { api.getOutcomeHistory(persistentId).outcomes }
             .getOrDefault(emptyList())
+
+    // ---------- Neighbourhood / area data (cached per area) ----------
+
+    private var cachedAreaKey: String? = null
+    private var cachedAreaInfo: AreaInfo? = null
+
+    /** Neighbourhood + force info for a point, cached so panning doesn't refetch. */
+    suspend fun getAreaInfo(lat: Double, lng: Double): AreaInfo? {
+        val key = "%.3f,%.3f".format(lat, lng)
+        if (key == cachedAreaKey) return cachedAreaInfo
+        return runCatching {
+            val ref = api.locateNeighbourhood("$lat,$lng")
+            val neighbourhood = api.getNeighbourhood(ref.force, ref.neighbourhood)
+            val force = runCatching { api.getForceDetails(ref.force) }.getOrNull()
+            AreaInfo(
+                forceId = ref.force,
+                neighbourhoodId = ref.neighbourhood,
+                forceName = force?.name ?: ref.force.replace("-", " ").replaceFirstChar { it.uppercase() },
+                forceUrl = force?.url,
+                forceTelephone = force?.telephone,
+                neighbourhoodName = neighbourhood.name,
+                neighbourhoodDescription = neighbourhood.description,
+                neighbourhoodUrl = neighbourhood.urlForce,
+                population = neighbourhood.population?.takeIf { it != "0" }
+            ).also {
+                cachedAreaKey = key
+                cachedAreaInfo = it
+            }
+        }.getOrNull()
+    }
+
+    suspend fun getTeam(force: String, neighbourhood: String): List<NeighbourhoodOfficer> =
+        runCatching { api.getNeighbourhoodTeam(force, neighbourhood) }.getOrDefault(emptyList())
+
+    suspend fun getEvents(force: String, neighbourhood: String): List<NeighbourhoodEvent> =
+        runCatching { api.getNeighbourhoodEvents(force, neighbourhood) }.getOrDefault(emptyList())
+
+    suspend fun getBoundary(force: String, neighbourhood: String): List<BoundaryPoint> =
+        runCatching { api.getNeighbourhoodBoundary(force, neighbourhood) }.getOrDefault(emptyList())
+
+    suspend fun reverseGeocode(lat: Double, lng: Double): ReverseGeocodeResponse? =
+        runCatching { NominatimApi.service.reverseGeocode(lat, lng) }.getOrNull()
+
+    fun clearAreaCache() {
+        cachedAreaKey = null
+        cachedAreaInfo = null
+    }
 }
+
+/**
+ * Snapshot of everything we know about the policing area around the selected point.
+ */
+data class AreaInfo(
+    val forceId: String,
+    val neighbourhoodId: String,
+    val forceName: String,
+    val forceUrl: String?,
+    val forceTelephone: String?,
+    val neighbourhoodName: String?,
+    val neighbourhoodDescription: String?,
+    val neighbourhoodUrl: String?,
+    val population: String?
+)

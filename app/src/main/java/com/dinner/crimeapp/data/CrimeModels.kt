@@ -57,3 +57,69 @@ data class OutcomeEntry(
     @Json(name = "date") val date: String,
     @Json(name = "person_id") val personId: String?
 )
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodRef(
+    @Json(name = "force") val force: String,
+    @Json(name = "neighbourhood") val neighbourhood: String
+)
+
+@JsonClass(generateAdapter = true)
+data class Neighbourhood(
+    @Json(name = "id") val id: String,
+    @Json(name = "name") val name: String?,
+    @Json(name = "description") val description: String?,
+    @Json(name = "url_force") val urlForce: String?,
+    @Json(name = "population") val population: String?,
+    @Json(name = "contact_details") val contactDetails: Map<String, String>?,
+    @Json(name = "centre") val centre: NeighbourhoodCentre?,
+    @Json(name = "locations") val locations: List<NeighbourhoodLocation>?
+)
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodCentre(
+    @Json(name = "latitude") val latitude: String,
+    @Json(name = "longitude") val longitude: String
+)
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodLocation(
+    @Json(name = "name") val name: String?,
+    @Json(name = "address") val address: String?,
+    @Json(name = "postcode") val postcode: String?,
+    @Json(name = "type") val type: String?,
+    @Json(name = "latitude") val latitude: String?,
+    @Json(name = "longitude") val longitude: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodOfficer(
+    @Json(name = "name") val name: String,
+    @Json(name = "rank") val rank: String?,
+    @Json(name = "bio") val bio: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodEvent(
+    @Json(name = "title") val title: String,
+    @Json(name = "description") val description: String?,
+    @Json(name = "address") val address: String?,
+    @Json(name = "type") val type: String?,
+    @Json(name = "start_date") val startDate: String?,
+    @Json(name = "end_date") val endDate: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class BoundaryPoint(
+    @Json(name = "latitude") val latitude: String,
+    @Json(name = "longitude") val longitude: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ForceDetails(
+    @Json(name = "id") val id: String,
+    @Json(name = "name") val name: String?,
+    @Json(name = "url") val url: String?,
+    @Json(name = "telephone") val telephone: String?,
+    @Json(name = "description") val description: String?
+)

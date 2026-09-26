@@ -9,6 +9,14 @@ interface NominatimApiService {
         @Query("q") query: String,
         @Query("format") format: String = "json",
         @Query("countrycodes") countryCodes: String = "gb",
-        @Query("limit") limit: Int = 5
+        @Query("limit") limit: Int = 8
     ): List<GeocodeResult>
+
+    @GET("reverse")
+    suspend fun reverseGeocode(
+        @Query("lat") lat: Double,
+        @Query("lon") lng: Double,
+        @Query("format") format: String = "json",
+        @Query("zoom") zoom: Int = 16
+    ): ReverseGeocodeResponse
 }

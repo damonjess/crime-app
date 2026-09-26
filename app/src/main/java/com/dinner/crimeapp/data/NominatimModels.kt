@@ -9,3 +9,10 @@ data class GeocodeResult(
     @Json(name = "lat") val lat: String,
     @Json(name = "lon") val lon: String
 )
+
+@JsonClass(generateAdapter = true)
+data class ReverseGeocodeResponse(
+    @Json(name = "name") val name: String?,
+    @Json(name = "display_name") val displayName: String?,
+    @Json(name = "address") val address: Map<String, String>?
+)

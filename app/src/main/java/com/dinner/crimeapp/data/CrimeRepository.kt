@@ -143,26 +143,25 @@ class CrimeRepository(
     /** Neighbourhood + force info for a point, cached so panning doesn't refetch. */
     suspend fun getAreaInfo(lat: Double, lng: Double): AreaInfo? {
         val key = "%.3f,%.3f".format(lat, lng)
-        if (key == cachedAreaKey) return cachedAreaInfo
-        return runCatching {
-            val ref = api.locateNeighbourhood("$lat,$lng")
-            val neighbourhood = api.getNeighbourhood(ref.force, ref.neighbourhood)
-            val force = runCatching { api.getForceDetails(ref.force) }.getOrNull()
-            AreaInfo(
-                forceId = ref.force,
-                neighbourhoodId = ref.neighbourhood,
-                forceName = force?.name ?: ref.force.replace("-", " ").replaceFirstChar { it.uppercase() },
-                forceUrl = force?.url,
-                forceTelephone = force?.telephone,
-                neighbourhoodName = neighbourhood.name,
-                neighbourhoodDescription = neighbourhood.description,
-                neighbourhoodUrl = neighbourhood.urlForce,
-                population = neighbourhood.population?.takeIf { it != "0" }
-            ).also {
-                cachedAreaKey = key
-                cachedAreaInfo = it
-            }
-        }.getOrNull()
+        if (key == cachedAreaKey && cachedAreaInfo != null) return cachedAreaInfo
+        
+        val ref = api.locateNeighbourhood("$lat,$lng")
+        val neighbourhood = api.getNeighbourhood(ref.force, ref.neighbourhood)
+        val force = runCatching { api.getForceDetails(ref.force) }.getOrNull()
+        return AreaInfo(
+            forceId = ref.force,
+            neighbourhoodId = ref.neighbourhood,
+            forceName = force?.name ?: ref.force.replace("-", " ").replaceFirstChar { it.uppercase() },
+            forceUrl = force?.url,
+            forceTelephone = force?.telephone,
+            neighbourhoodName = neighbourhood.name,
+            neighbourhoodDescription = neighbourhood.description,
+            neighbourhoodUrl = neighbourhood.urlForce,
+            population = neighbourhood.population?.takeIf { it != "0" }
+        ).also {
+            cachedAreaKey = key
+            cachedAreaInfo = it
+        }
     }
 
     suspend fun getTeam(force: String, neighbourhood: String): List<NeighbourhoodOfficer> =

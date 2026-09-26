@@ -1,7 +1,9 @@
 package com.dinner.crimeapp.ui
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -38,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dinner.crimeapp.ui.theme.ThemeMode
 import com.dinner.crimeapp.ui.theme.ThemePrefs
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 data class BottomTab(val label: String, val iconSelected: androidx.compose.ui.graphics.vector.ImageVector, val iconOutline: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -50,34 +53,97 @@ fun CrimeHomeScreen() {
 
     var currentLat by rememberSaveable { mutableStateOf(51.5074) }
     var currentLng by rememberSaveable { mutableStateOf(-0.1278) }
+    var locationNonce by remember { mutableStateOf(0L) }
+    var isLocating by remember { mutableStateOf(false) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    @SuppressLint("MissingPermission")
+    fun performLocationFetch() {
+        isLocating = true
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                isLocating = false
+                currentLat = location.latitude
+                currentLng = location.longitude
+                locationNonce = System.currentTimeMillis()
+            } else {
+                fusedLocationClient.getCurrentLocation(
+                    Priority.PRIORITY_HIGH_ACCURACY,
+                    null
+                ).addOnSuccessListener { freshLocation ->
+                    isLocating = false
+                    if (freshLocation != null) {
+                        currentLat = freshLocation.latitude
+                        currentLng = freshLocation.longitude
+                        locationNonce = System.currentTimeMillis()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Unable to determine current location. Please check GPS.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }.addOnFailureListener { e ->
+                    isLocating = false
+                    Toast.makeText(
+                        context,
+                        "Location error: ${e.localizedMessage}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }.addOnFailureListener {
+            fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                null
+            ).addOnSuccessListener { freshLocation ->
+                isLocating = false
+                if (freshLocation != null) {
+                    currentLat = freshLocation.latitude
+                    currentLng = freshLocation.longitude
+                    locationNonce = System.currentTimeMillis()
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Unable to determine current location.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }.addOnFailureListener { e ->
+                isLocating = false
+                Toast.makeText(
+                    context,
+                    "Location error: ${e.localizedMessage}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    currentLat = location.latitude
-                    currentLng = location.longitude
-                }
-            }
+            performLocationFetch()
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                "Location permission is required to locate you.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
     fun requestMyLocation() {
         val hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    currentLat = location.latitude
-                    currentLng = location.longitude
-                }
-            }
+            performLocationFetch()
         } else {
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
@@ -135,8 +201,19 @@ fun CrimeHomeScreen() {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { requestMyLocation() }) {
-                        Icon(Icons.Filled.LocationOn, contentDescription = "Use my location")
+                    IconButton(
+                        onClick = { requestMyLocation() },
+                        enabled = !isLocating
+                    ) {
+                        if (isLocating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(Icons.Filled.LocationOn, contentDescription = "Use my location")
+                        }
                     }
                     IconButton(onClick = { placesSheetOpen = true }) {
                         Icon(Icons.Filled.Bookmark, contentDescription = "Saved places")
@@ -212,10 +289,12 @@ fun CrimeHomeScreen() {
                     viewModel = viewModel,
                     startLat = currentLat,
                     startLng = currentLng,
+                    locationNonce = locationNonce,
                     onLocationChanged = { lat, lng ->
                         currentLat = lat
                         currentLng = lng
-                    }
+                    },
+                    onRequestMyLocation = { requestMyLocation() }
                 )
                 1 -> CrimeListScreen(
                     viewModel = viewModel,

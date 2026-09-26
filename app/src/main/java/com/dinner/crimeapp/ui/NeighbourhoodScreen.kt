@@ -2,6 +2,7 @@ package com.dinner.crimeapp.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.text.Html
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dinner.crimeapp.data.AreaInfo
 import com.dinner.crimeapp.data.NeighbourhoodEvent
@@ -22,6 +24,8 @@ import com.dinner.crimeapp.data.NeighbourhoodOfficer
 
 @Composable
 fun NeighbourhoodScreen(viewModel: CrimeMapViewModel) {
+    val isAreaLoading by viewModel.isAreaLoading.collectAsState()
+    val areaError by viewModel.areaError.collectAsState()
     val areaInfo by viewModel.areaInfo.collectAsState()
     val team by viewModel.team.collectAsState()
     val events by viewModel.events.collectAsState()
@@ -29,14 +33,60 @@ fun NeighbourhoodScreen(viewModel: CrimeMapViewModel) {
     val context = LocalContext.current
 
     val areaName = locationName ?: viewModel.areaLabel()
-    val isLoadingArea = areaInfo == null
 
-    if (isLoadingArea) {
+    if (isAreaLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Spacer(Modifier.height(12.dp))
                 Text("Finding your local policing team…", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        return
+    }
+
+    if (areaInfo == null) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "No policing team details found",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        areaError ?: "Local policing team information is available for England, Wales, and Northern Ireland.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { viewModel.reloadAreaContext() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry")
+                    }
+                }
             }
         }
         return
@@ -80,14 +130,21 @@ fun NeighbourhoodScreen(viewModel: CrimeMapViewModel) {
             }
         }
 
-        areaInfo?.neighbourhoodDescription?.let { desc ->
+        areaInfo?.neighbourhoodDescription?.let { rawDesc ->
             item {
-                SectionCard(title = "About this area") {
-                    Text(
-                        desc.trim(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                    )
+                val cleanDesc = remember(rawDesc) {
+                    Html.fromHtml(rawDesc, Html.FROM_HTML_MODE_LEGACY)
+                        .toString()
+                        .trim()
+                }
+                if (cleanDesc.isNotBlank()) {
+                    SectionCard(title = "About this area") {
+                        Text(
+                            cleanDesc,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                        )
+                    }
                 }
             }
         }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Whatshot
@@ -27,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,15 +52,16 @@ fun CrimeMapScreen(
     viewModel: CrimeMapViewModel = viewModel(),
     startLat: Double = 51.5074,
     startLng: Double = -0.1278,
-    onLocationChanged: (Double, Double) -> Unit = { _, _ -> }
+    locationNonce: Long = 0L,
+    onLocationChanged: (Double, Double) -> Unit = { _, _ -> },
+    onRequestMyLocation: (() -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
-    val mapCenter = remember(startLat, startLng) { GeoPoint(startLat, startLng) }
-    var loadedCenter by remember { mutableStateOf(mapCenter) }
+    var animateTarget by remember { mutableStateOf<GeoPoint?>(GeoPoint(startLat, startLng)) }
+    var loadedCenter by remember { mutableStateOf(GeoPoint(startLat, startLng)) }
     var pendingCenter by remember { mutableStateOf<GeoPoint?>(null) }
-    var lastMovedCenter by remember { mutableStateOf(loadedCenter) }
 
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
     var selectedStop by remember { mutableStateOf<StopSearch?>(null) }
@@ -84,11 +88,13 @@ fun CrimeMapScreen(
     var searchLat by remember { mutableStateOf(startLat) }
     var searchLng by remember { mutableStateOf(startLng) }
 
-    LaunchedEffect(startLat, startLng) {
+    LaunchedEffect(startLat, startLng, locationNonce) {
         searchLat = startLat
         searchLng = startLng
         viewModel.loadCrimes(startLat, startLng)
-        loadedCenter = mapCenter
+        val target = GeoPoint(startLat, startLng)
+        loadedCenter = target
+        animateTarget = target
         pendingCenter = null
     }
 
@@ -102,7 +108,10 @@ fun CrimeMapScreen(
                         searchLat = lat
                         searchLng = lng
                         onLocationChanged(lat, lng)
-                        lastMovedCenter = GeoPoint(lat, lng).also { loadedCenter = it }
+                        val target = GeoPoint(lat, lng)
+                        loadedCenter = target
+                        animateTarget = target
+                        pendingCenter = null
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -180,9 +189,9 @@ fun CrimeMapScreen(
                 }
             },
             update = { mapView ->
-                if (loadedCenter != lastMovedCenter) {
-                    mapView.controller.animateTo(loadedCenter)
-                    lastMovedCenter = loadedCenter
+                animateTarget?.let { target ->
+                    mapView.controller.animateTo(target)
+                    animateTarget = null
                 }
 
                 val dataHash = buildString {
@@ -298,8 +307,14 @@ fun CrimeMapScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             MapFab(icon = { Icon(Icons.Outlined.Layers, "Map layers") }, onClick = { layersSheetOpen = true })
-            MapFab(icon = { Icon(Icons.Filled.CenterFocusStrong, "Re-centre") }, onClick = {
-                lastMovedCenter = GeoPoint(searchLat, searchLng)
+            if (onRequestMyLocation != null) {
+                MapFab(icon = { Icon(Icons.Filled.MyLocation, "My location") }, onClick = { onRequestMyLocation() })
+            }
+            MapFab(icon = { Icon(Icons.Filled.CenterFocusStrong, "Re-centre search") }, onClick = {
+                val target = GeoPoint(searchLat, searchLng)
+                loadedCenter = target
+                animateTarget = target
+                pendingCenter = null
             })
             MapFab(icon = { Icon(Icons.Filled.BookmarkAdd, "Save this place") }, onClick = {
                 viewModel.saveCurrentPlace(
@@ -307,7 +322,7 @@ fun CrimeMapScreen(
                     lat = searchLat,
                     lng = searchLng
                 )
-                android.widget.Toast.makeText(context, "Place saved", android.widget.Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Place saved", Toast.LENGTH_SHORT).show()
             })
         }
 
@@ -342,6 +357,7 @@ fun CrimeMapScreen(
                         viewModel.loadCrimes(center.latitude, center.longitude)
                         onLocationChanged(center.latitude, center.longitude)
                         loadedCenter = center
+                        animateTarget = center
                         pendingCenter = null
                     },
                     modifier = Modifier

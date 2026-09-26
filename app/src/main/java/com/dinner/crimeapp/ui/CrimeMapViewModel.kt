@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlin.time.Duration.Companion.milliseconds
 
 enum class ViewMode { CRIMES, STOP_SEARCH }
@@ -87,6 +88,12 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
     private val _searchQueryFlow = MutableStateFlow("")
 
     // ---------- Area / neighbourhood state ----------
+    private val _isAreaLoading = MutableStateFlow(false)
+    val isAreaLoading: StateFlow<Boolean> = _isAreaLoading.asStateFlow()
+
+    private val _areaError = MutableStateFlow<String?>(null)
+    val areaError: StateFlow<String?> = _areaError.asStateFlow()
+
     private val _areaInfo = MutableStateFlow<AreaInfo?>(null)
     val areaInfo: StateFlow<AreaInfo?> = _areaInfo.asStateFlow()
 
@@ -104,6 +111,10 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     private val _boundary = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
     val boundary: StateFlow<List<Pair<Double, Double>>> = _boundary.asStateFlow()
+
+    private var areaJob: Job? = null
+    private var currentAreaLat: Double? = null
+    private var currentAreaLng: Double? = null
 
     /** Fetch and expose the neighbourhood boundary polygon for outline drawing. */
     fun loadBoundary(force: String, neighbourhood: String) {
@@ -146,6 +157,9 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     fun loadCrimes(lat: Double, lng: Double, monthsBack: Int = 6) {
         Log.d("CrimeMapViewModel", "loadCrimes: $lat, $lng")
+        // Load area info immediately in parallel so Area tab is not delayed by crime queries
+        loadAreaContext(lat, lng)
+
         viewModelScope.launch {
             // Clear previous data immediately to avoid showing "ghost" markers from old locations
             _state.value = _state.value.copy(
@@ -178,31 +192,63 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
                 stopsRateLimited = stopsLimited,
                 error = crimesError ?: stopsError ?: crimesResult.exceptionOrNull()?.message ?: stopsResult.exceptionOrNull()?.message
             )
-
-            loadAreaContext(lat, lng)
         }
     }
 
     /** Loads neighbourhood/force/reverse-geocoded place name for the current point. */
-    private fun loadAreaContext(lat: Double, lng: Double) {
-        viewModelScope.launch {
-            _boundary.value = emptyList()
-            _areaInfo.value = runCatching { repository.getAreaInfo(lat, lng) }.getOrNull()
-            _areaInfo.value?.let { loadBoundary(it.forceId, it.neighbourhoodId) }
-            _team.value = _areaInfo.value?.let {
-                runCatching { repository.getTeam(it.forceId, it.neighbourhoodId) }.getOrDefault(emptyList())
-            } ?: emptyList()
-            _events.value = _areaInfo.value?.let {
-                runCatching { repository.getEvents(it.forceId, it.neighbourhoodId) }.getOrDefault(emptyList())
-            } ?: emptyList()
-            _areaLocationName.value = runCatching {
-                repository.reverseGeocode(lat, lng)?.let { resp ->
-                    resp.address?.let { addr ->
-                        listOfNotNull(addr["town"], addr["city"], addr["village"], addr["county"]).firstOrNull()
-                    } ?: resp.name
-                }
-            }.getOrNull()
+    fun loadAreaContext(lat: Double, lng: Double, forceRefresh: Boolean = false) {
+        if (!forceRefresh && currentAreaLat == lat && currentAreaLng == lng && _areaInfo.value != null) {
+            return
         }
+        currentAreaLat = lat
+        currentAreaLng = lng
+
+        areaJob?.cancel()
+        areaJob = viewModelScope.launch {
+            _isAreaLoading.value = true
+            _areaError.value = null
+            _boundary.value = emptyList()
+
+            val areaResult = runCatching { repository.getAreaInfo(lat, lng) }
+            val info = areaResult.getOrNull()
+            _areaInfo.value = info
+
+            if (info != null) {
+                launch { loadBoundary(info.forceId, info.neighbourhoodId) }
+                launch {
+                    _team.value = runCatching { repository.getTeam(info.forceId, info.neighbourhoodId) }
+                        .getOrDefault(emptyList())
+                }
+                launch {
+                    _events.value = runCatching { repository.getEvents(info.forceId, info.neighbourhoodId) }
+                        .getOrDefault(emptyList())
+                }
+            } else {
+                _team.value = emptyList()
+                _events.value = emptyList()
+                _areaError.value = areaResult.exceptionOrNull()?.message 
+                    ?: "No local policing team found for this location."
+            }
+
+            launch {
+                _areaLocationName.value = runCatching {
+                    repository.reverseGeocode(lat, lng)?.let { resp ->
+                        resp.address?.let { addr ->
+                            listOfNotNull(addr["town"], addr["city"], addr["village"], addr["county"]).firstOrNull()
+                        } ?: resp.name
+                    }
+                }.getOrNull()
+            }
+
+            _isAreaLoading.value = false
+        }
+    }
+
+    fun reloadAreaContext() {
+        val lat = currentAreaLat ?: return
+        val lng = currentAreaLng ?: return
+        repository.clearAreaCache()
+        loadAreaContext(lat, lng, forceRefresh = true)
     }
 
     fun saveCurrentPlace(name: String, lat: Double, lng: Double) {

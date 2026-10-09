@@ -12,8 +12,11 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 class CrimeRepository(
+    context: android.content.Context,
     private val api: PoliceApiService = PoliceApi.service
 ) {
+    private val db = AppDatabase.getDatabase(context)
+    private val areaDao = db.areaProfileDao()
     // Cap how many requests are in flight at once, shared across crimes + stops
     private val requestSemaphore = Semaphore(permits = 4)
 
@@ -134,6 +137,45 @@ class CrimeRepository(
     suspend fun getOutcomeHistory(persistentId: String): List<OutcomeEntry> =
         runCatching { api.getOutcomeHistory(persistentId).outcomes }
             .getOrDefault(emptyList())
+
+    suspend fun getAreaProfile(lat: Double, lng: Double): PostcodeResult? {
+        val cacheKey = "%.4f,%.4f".format(lat, lng)
+        val cached = areaDao.getProfile(cacheKey)
+        
+        // 30 days in milliseconds
+        val thirtyDaysMs = 2592000000L 
+        
+        // 1. Check if we have a fresh local copy
+        if (cached != null && (System.currentTimeMillis() - cached.timestamp) < thirtyDaysMs) {
+            return PostcodeResult(
+                postcode = cached.postcode,
+                adminWard = cached.adminWard,
+                adminDistrict = cached.adminDistrict,
+                lsoa = cached.lsoa,
+                imdRank = cached.imdRank
+            )
+        }
+        
+        // 2. If missing or expired, fetch from the network
+        return runCatching {
+            PostcodesApi.service.getAreaStats(lon = lng, lat = lat).result?.firstOrNull()?.also { result ->
+                areaDao.insertProfile(
+                    AreaProfileEntity(
+                        coordinateKey = cacheKey,
+                        postcode = result.postcode,
+                        adminWard = result.adminWard,
+                        adminDistrict = result.adminDistrict,
+                        lsoa = result.lsoa,
+                        imdRank = result.imdRank,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
+        }.getOrNull() ?: cached?.let { 
+            // 3. Fallback: if network fails but we have an expired cache, return the expired cache
+            PostcodeResult(it.postcode, it.adminWard, it.adminDistrict, it.lsoa, it.imdRank) 
+        }
+    }
 
     // ---------- Neighbourhood / area data (cached per area) ----------
 

@@ -74,7 +74,11 @@ fun CrimeListScreen(
     selectedCrime?.let { crime ->
         LaunchedEffect(crime.persistentId) { viewModel.loadOutcomeHistory(crime.persistentId) }
         ModalBottomSheet(
-            onDismissRequest = { selectedCrime = null; viewModel.clearOutcomeHistory() },
+            onDismissRequest = { 
+                selectedCrime = null
+                viewModel.clearOutcomeHistory()
+                viewModel.clearAreaProfile()
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             CrimeDetailContent(crime, viewModel)
@@ -83,10 +87,13 @@ fun CrimeListScreen(
 
     selectedStop?.let { stop ->
         ModalBottomSheet(
-            onDismissRequest = { selectedStop = null },
+            onDismissRequest = { 
+                selectedStop = null
+                viewModel.clearAreaProfile() 
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            StopSearchDetailContent(stop)
+            StopSearchDetailContent(stop, viewModel)
         }
     }
 }
@@ -241,7 +248,17 @@ fun CrimeListItem(crime: Crime, onClick: () -> Unit) {
 fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
     val history by viewModel.outcomeHistory.collectAsState()
     val loading by viewModel.outcomeLoading.collectAsState()
+    val areaProfile by viewModel.areaProfile.collectAsState()
+    val areaProfileLoading by viewModel.areaProfileLoading.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(crime.id) {
+        val lat = crime.location.latitude.toDoubleOrNull()
+        val lng = crime.location.longitude.toDoubleOrNull()
+        if (lat != null && lng != null) {
+            viewModel.loadAreaProfile(lat, lng)
+        }
+    }
 
     Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 32.dp)) {
         // 1. Header
@@ -346,12 +363,25 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
                 }
             }
         }
+
+        NeighborhoodProfileCard(areaProfileLoading, areaProfile)
     }
 }
 
 @Composable
-fun StopSearchDetailContent(stop: StopSearch) {
+fun StopSearchDetailContent(stop: StopSearch, viewModel: CrimeMapViewModel) {
+    val areaProfile by viewModel.areaProfile.collectAsState()
+    val areaProfileLoading by viewModel.areaProfileLoading.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(stop) {
+        val lat = stop.location?.latitude?.toDoubleOrNull()
+        val lng = stop.location?.longitude?.toDoubleOrNull()
+        if (lat != null && lng != null) {
+            viewModel.loadAreaProfile(lat, lng)
+        }
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -445,6 +475,8 @@ fun StopSearchDetailContent(stop: StopSearch) {
                 DetailRow("Ethnicity", stop.selfDefinedEthnicity ?: "N/A")
             }
         }
+
+        NeighborhoodProfileCard(areaProfileLoading, areaProfile)
     }
 }
 
@@ -462,6 +494,52 @@ fun DetailRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+@Composable
+fun NeighborhoodProfileCard(loading: Boolean, profile: com.dinner.crimeapp.data.PostcodeResult?) {
+    Spacer(Modifier.height(24.dp))
+    Text("Neighborhood Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(12.dp))
+
+    when {
+        loading -> CircularProgressIndicator(Modifier.padding(8.dp))
+        profile == null -> Text("Profile data unavailable for this location.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    DetailRow("Ward", profile.adminWard ?: "Unknown")
+                    DetailRow("District", profile.adminDistrict ?: "Unknown")
+                    DetailRow("LSOA Code", profile.lsoa ?: "Unknown")
+                    
+                    profile.imdRank?.let { rank ->
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Spacer(Modifier.height(12.dp))
+                        
+                        // Converts the exact rank into a 1-10 decile for England
+                        val decile = kotlin.math.ceil(rank / 3284.4).toInt().coerceIn(1, 10)
+                        val description = when {
+                            decile <= 2 -> "Highly Deprived (Bottom 20%)"
+                            decile <= 4 -> "Below Average (Bottom 40%)"
+                            decile <= 6 -> "Average"
+                            decile <= 8 -> "Above Average (Top 40%)"
+                            else -> "Least Deprived (Top 20%)"
+                        }
+                        
+                        Text("Economic Profile", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Spacer(Modifier.height(4.dp))
+                        Text("IMD Decile $decile: $description", style = MaterialTheme.typography.bodyMedium)
+                        Text("Rank: $rank out of 32,844 English neighborhoods", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
     }
 }
 

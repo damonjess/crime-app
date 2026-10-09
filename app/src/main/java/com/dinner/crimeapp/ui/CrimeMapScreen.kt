@@ -70,6 +70,8 @@ fun CrimeMapScreen(
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
     var selectedStop by remember { mutableStateOf<StopSearch?>(null) }
 
+    var clusterSheetOpen by remember { mutableStateOf<List<Crime>?>(null) }
+
     // Layer mode: dots, heat, or clusters
     var layerMode by rememberSaveable { mutableStateOf(MapLayerMode.DOTS) }
     var layersSheetOpen by remember { mutableStateOf(false) }
@@ -240,7 +242,7 @@ fun CrimeMapScreen(
                     }
 
                     when {
-                        // Heatmap: soft blobs per incident, additive layering
+                        // 1. Heatmap
                         state.viewMode == ViewMode.CRIMES && layerMode == MapLayerMode.HEAT -> {
                             mapView.overlays.add(
                                 HeatmapOverlay(
@@ -252,7 +254,8 @@ fun CrimeMapScreen(
                                 )
                             )
                         }
-                        // Cluster view: grid-clustered bubbles sized by count
+                        
+                        // 2. Clusters (Zooms in, then opens a list)
                         state.viewMode == ViewMode.CRIMES && layerMode == MapLayerMode.CLUSTERS -> {
                             mapView.overlays.add(
                                 HotspotClusterOverlay(
@@ -262,13 +265,27 @@ fun CrimeMapScreen(
                                         lat to lng
                                     },
                                     onClusterTap = { lat, lng, _ ->
-                                        mapView.controller.animateTo(GeoPoint(lat, lng))
-                                        mapView.controller.setZoom(mapView.zoomLevelDouble + 1.5)
+                                        val currentZoom = mapView.zoomLevelDouble
+                                        if (currentZoom < 17.5) {
+                                            mapView.controller.animateTo(GeoPoint(lat, lng))
+                                            mapView.controller.setZoom(currentZoom + 1.5)
+                                        } else {
+                                            val clusterCrimes = visibleCrimes.filter { c ->
+                                                val cLat = c.location.latitude.toDoubleOrNull() ?: 0.0
+                                                val cLng = c.location.longitude.toDoubleOrNull() ?: 0.0
+                                                distanceMeters(lat, lng, cLat, cLng) < 80.0
+                                            }
+                                            if (clusterCrimes.isNotEmpty()) {
+                                                clusterSheetOpen = clusterCrimes
+                                            }
+                                        }
                                         true
                                     }
                                 )
                             )
                         }
+                        
+                        // 3. Dots (Simple, single tap markers)
                         state.viewMode == ViewMode.CRIMES -> {
                             visibleCrimes.forEach { crime ->
                                 val lat = crime.location.latitude.toDoubleOrNull() ?: return@forEach
@@ -287,6 +304,8 @@ fun CrimeMapScreen(
                                 mapView.overlays.add(marker)
                             }
                         }
+                        
+                        // 4. Stop and Searches
                         else -> {
                             visibleStops.forEach { stop ->
                                 val lat = stop.location?.latitude?.toDoubleOrNull() ?: return@forEach
@@ -394,7 +413,11 @@ fun CrimeMapScreen(
     selectedCrime?.let { crime ->
         LaunchedEffect(crime.persistentId) { viewModel.loadOutcomeHistory(crime.persistentId) }
         ModalBottomSheet(
-            onDismissRequest = { selectedCrime = null; viewModel.clearOutcomeHistory() },
+            onDismissRequest = { 
+                selectedCrime = null
+                viewModel.clearOutcomeHistory()
+                viewModel.clearAreaProfile()
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             CrimeDetailContent(crime, viewModel)
@@ -403,10 +426,13 @@ fun CrimeMapScreen(
 
     selectedStop?.let { stop ->
         ModalBottomSheet(
-            onDismissRequest = { selectedStop = null },
+            onDismissRequest = { 
+                selectedStop = null
+                viewModel.clearAreaProfile()
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            StopSearchDetailContent(stop)
+            StopSearchDetailContent(stop, viewModel)
         }
     }
 
@@ -457,6 +483,34 @@ fun CrimeMapScreen(
                             Text(e.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                             Text(e.count.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    if (clusterSheetOpen != null) {
+        val clusterCrimes = clusterSheetOpen!!
+        ModalBottomSheet(
+            onDismissRequest = { clusterSheetOpen = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                Text(
+                    "${clusterCrimes.size} crimes in this area",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp, top = 8.dp)
+                )
+                LazyColumn(
+                    modifier = Modifier.fillMaxHeight(0.6f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(clusterCrimes) { crime ->
+                        CrimeListItem(crime = crime, onClick = {
+                            clusterSheetOpen = null
+                            selectedCrime = crime
+                        })
                     }
                 }
             }

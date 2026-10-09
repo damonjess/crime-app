@@ -66,7 +66,7 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     // Property initializer (not a constructor param) so the default
     // AndroidViewModelFactory can instantiate this class via reflection.
-    private val repository: CrimeRepository = CrimeRepository()
+    private val repository: CrimeRepository = CrimeRepository(application)
 
     private val appContext: Context = application
 
@@ -78,6 +78,12 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     private val _outcomeLoading = MutableStateFlow(false)
     val outcomeLoading: StateFlow<Boolean> = _outcomeLoading.asStateFlow()
+
+    private val _areaProfile = MutableStateFlow<com.dinner.crimeapp.data.PostcodeResult?>(null)
+    val areaProfile: StateFlow<com.dinner.crimeapp.data.PostcodeResult?> = _areaProfile.asStateFlow()
+
+    private val _areaProfileLoading = MutableStateFlow(false)
+    val areaProfileLoading: StateFlow<Boolean> = _areaProfileLoading.asStateFlow()
 
     private val _searchResults = MutableStateFlow<List<GeocodeResult>>(emptyList())
     val searchResults: StateFlow<List<GeocodeResult>> = _searchResults.asStateFlow()
@@ -358,6 +364,18 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     fun clearOutcomeHistory() {
         _outcomeHistory.value = emptyList()
+    }
+
+    fun loadAreaProfile(lat: Double, lng: Double) {
+        viewModelScope.launch {
+            _areaProfileLoading.value = true
+            _areaProfile.value = repository.getAreaProfile(lat, lng)
+            _areaProfileLoading.value = false
+        }
+    }
+
+    fun clearAreaProfile() {
+        _areaProfile.value = null
     }
 
     fun updateSearchQuery(query: String) {

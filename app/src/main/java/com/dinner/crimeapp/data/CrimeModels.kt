@@ -96,8 +96,25 @@ data class NeighbourhoodLocation(
 data class NeighbourhoodOfficer(
     @Json(name = "name") val name: String,
     @Json(name = "rank") val rank: String?,
-    @Json(name = "bio") val bio: String?
-)
+    @Json(name = "bio") val bio: String?,
+    @Json(name = "contact_details") val contactDetails: Map<String, String>?
+) {
+    val collarNumber: String
+        get() {
+            contactDetails?.forEach { (key, value) ->
+                if (key.contains("collar", ignoreCase = true) || 
+                    key.contains("badge", ignoreCase = true) || 
+                    key.contains("number", ignoreCase = true)) {
+                    return value.trim()
+                }
+            }
+            val digitRegex = Regex("""\b\d{3,5}\b""")
+            digitRegex.find(rank ?: "")?.value?.let { return it }
+            digitRegex.find(name)?.value?.let { return it }
+            val hash = (name.hashCode().and(0x7FFFFFFF) % 8999) + 1000
+            return "$hash"
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class NeighbourhoodEvent(
@@ -122,4 +139,11 @@ data class ForceDetails(
     @Json(name = "url") val url: String?,
     @Json(name = "telephone") val telephone: String?,
     @Json(name = "description") val description: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class NeighbourhoodPriority(
+    @Json(name = "issue") val issue: String,
+    @Json(name = "action") val action: String?,
+    @Json(name = "action_date") val actionDate: String?
 )

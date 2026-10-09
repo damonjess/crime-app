@@ -106,6 +106,9 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
     private val _events = MutableStateFlow<List<com.dinner.crimeapp.data.NeighbourhoodEvent>>(emptyList())
     val events: StateFlow<List<com.dinner.crimeapp.data.NeighbourhoodEvent>> = _events.asStateFlow()
 
+    private val _priorities = MutableStateFlow<List<com.dinner.crimeapp.data.NeighbourhoodPriority>>(emptyList())
+    val priorities: StateFlow<List<com.dinner.crimeapp.data.NeighbourhoodPriority>> = _priorities.asStateFlow()
+
     private val _savedPlaces = MutableStateFlow<List<SavedPlace>>(emptyList())
     val savedPlaces: StateFlow<List<SavedPlace>> = _savedPlaces.asStateFlow()
 
@@ -223,9 +226,14 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
                     _events.value = runCatching { repository.getEvents(info.forceId, info.neighbourhoodId) }
                         .getOrDefault(emptyList())
                 }
+                launch {
+                    _priorities.value = runCatching { repository.getPriorities(info.forceId, info.neighbourhoodId) }
+                        .getOrDefault(emptyList())
+                }
             } else {
                 _team.value = emptyList()
                 _events.value = emptyList()
+                _priorities.value = emptyList()
                 _areaError.value = areaResult.exceptionOrNull()?.message 
                     ?: "No local policing team found for this location."
             }

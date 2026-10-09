@@ -53,6 +53,12 @@ interface PoliceApiService {
         @Path("neighbourhood") neighbourhood: String
     ): List<NeighbourhoodEvent>
 
+    @GET("{force}/{neighbourhood}/priorities")
+    suspend fun getNeighbourhoodPriorities(
+        @Path("force") force: String,
+        @Path("neighbourhood") neighbourhood: String
+    ): List<NeighbourhoodPriority>
+
     @GET("{force}/{neighbourhood}/boundary")
     suspend fun getNeighbourhoodBoundary(
         @Path("force") force: String,

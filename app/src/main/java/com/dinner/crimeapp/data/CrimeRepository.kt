@@ -24,9 +24,9 @@ class CrimeRepository(
                 try {
                     return@withPermit block()
                 } catch (e: HttpException) {
-                    if (e.code() == 429 && attempt < 2) {
+                    if (e.code() == 429 && attempt < 4) {
                         attempt++
-                        delay(500L * attempt)
+                        delay(1000L * attempt)
                     } else {
                         throw e
                     }
@@ -145,9 +145,9 @@ class CrimeRepository(
         val key = "%.3f,%.3f".format(lat, lng)
         if (key == cachedAreaKey && cachedAreaInfo != null) return cachedAreaInfo
         
-        val ref = api.locateNeighbourhood("$lat,$lng")
-        val neighbourhood = api.getNeighbourhood(ref.force, ref.neighbourhood)
-        val force = runCatching { api.getForceDetails(ref.force) }.getOrNull()
+        val ref = throttled { api.locateNeighbourhood("$lat,$lng") }
+        val neighbourhood = throttled { api.getNeighbourhood(ref.force, ref.neighbourhood) }
+        val force = runCatching { throttled { api.getForceDetails(ref.force) } }.getOrNull()
         return AreaInfo(
             forceId = ref.force,
             neighbourhoodId = ref.neighbourhood,
@@ -157,7 +157,9 @@ class CrimeRepository(
             neighbourhoodName = neighbourhood.name,
             neighbourhoodDescription = neighbourhood.description,
             neighbourhoodUrl = neighbourhood.urlForce,
-            population = neighbourhood.population?.takeIf { it != "0" }
+            population = neighbourhood.population?.takeIf { it != "0" },
+            locations = neighbourhood.locations,
+            contactDetails = neighbourhood.contactDetails
         ).also {
             cachedAreaKey = key
             cachedAreaInfo = it
@@ -165,13 +167,16 @@ class CrimeRepository(
     }
 
     suspend fun getTeam(force: String, neighbourhood: String): List<NeighbourhoodOfficer> =
-        runCatching { api.getNeighbourhoodTeam(force, neighbourhood) }.getOrDefault(emptyList())
+        runCatching { throttled { api.getNeighbourhoodTeam(force, neighbourhood) } }.getOrDefault(emptyList())
 
     suspend fun getEvents(force: String, neighbourhood: String): List<NeighbourhoodEvent> =
-        runCatching { api.getNeighbourhoodEvents(force, neighbourhood) }.getOrDefault(emptyList())
+        runCatching { throttled { api.getNeighbourhoodEvents(force, neighbourhood) } }.getOrDefault(emptyList())
+
+    suspend fun getPriorities(force: String, neighbourhood: String): List<NeighbourhoodPriority> =
+        runCatching { throttled { api.getNeighbourhoodPriorities(force, neighbourhood) } }.getOrDefault(emptyList())
 
     suspend fun getBoundary(force: String, neighbourhood: String): List<BoundaryPoint> =
-        runCatching { api.getNeighbourhoodBoundary(force, neighbourhood) }.getOrDefault(emptyList())
+        runCatching { throttled { api.getNeighbourhoodBoundary(force, neighbourhood) } }.getOrDefault(emptyList())
 
     suspend fun reverseGeocode(lat: Double, lng: Double): ReverseGeocodeResponse? =
         runCatching { NominatimApi.service.reverseGeocode(lat, lng) }.getOrNull()
@@ -194,5 +199,7 @@ data class AreaInfo(
     val neighbourhoodName: String?,
     val neighbourhoodDescription: String?,
     val neighbourhoodUrl: String?,
-    val population: String?
+    val population: String?,
+    val locations: List<NeighbourhoodLocation>?,
+    val contactDetails: Map<String, String>?
 )

@@ -40,6 +40,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dinner.crimeapp.data.Crime
+import com.dinner.crimeapp.data.RoadAccidentEntity
 import com.dinner.crimeapp.data.StopSearch
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
@@ -69,6 +70,7 @@ fun CrimeMapScreen(
 
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
     var selectedStop by remember { mutableStateOf<StopSearch?>(null) }
+    var selectedAccident by remember { mutableStateOf<RoadAccidentEntity?>(null) }
 
     var clusterSheetOpen by remember { mutableStateOf<List<Crime>?>(null) }
 
@@ -103,6 +105,14 @@ fun CrimeMapScreen(
         loadedCenter = target
         animateTarget = target
         pendingCenter = null
+    }
+
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+
+    LaunchedEffect(state.viewMode) {
+        if (state.viewMode == ViewMode.ACCIDENTS) {
+            mapViewRef?.let { viewModel.loadAccidentsForVisibleArea(it) }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -148,6 +158,16 @@ fun CrimeMapScreen(
                         ) { Text("Stops") }
                     }
 
+                    FilterChip(
+                        selected = state.viewMode == ViewMode.ACCIDENTS,
+                        onClick = { viewModel.setViewMode(ViewMode.ACCIDENTS) },
+                        label = { Text("Road Safety") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    )
+
                     if (state.viewMode == ViewMode.CRIMES) {
                         CategoryFilterDropdown(
                             categories = state.categories,
@@ -175,6 +195,7 @@ fun CrimeMapScreen(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx: Context ->
                 MapView(ctx).apply {
+                    mapViewRef = this
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
                     controller.setZoom(15.0)
@@ -216,6 +237,7 @@ fun CrimeMapScreen(
                     append(layerMode).append('|')
                     append(visibleCrimes.size).append('|')
                     append(visibleStops.size).append('|')
+                    append(state.visibleAccidents.size).append('|')
                     append(boundary.size)
                 }.hashCode()
 
@@ -306,7 +328,7 @@ fun CrimeMapScreen(
                         }
                         
                         // 4. Stop and Searches
-                        else -> {
+                        state.viewMode == ViewMode.STOP_SEARCH -> {
                             visibleStops.forEach { stop ->
                                 val lat = stop.location?.latitude?.toDoubleOrNull() ?: return@forEach
                                 val lng = stop.location?.longitude?.toDoubleOrNull() ?: return@forEach
@@ -319,6 +341,39 @@ fun CrimeMapScreen(
                                     setOnMarkerClickListener { _, _ ->
                                         selectedStop = stop
                                         true
+                                    }
+                                }
+                                mapView.overlays.add(marker)
+                            }
+                        }
+
+                        // 5. Road Safety Accidents
+                        state.viewMode == ViewMode.ACCIDENTS -> {
+                            state.visibleAccidents.forEach { accident ->
+                                val marker = Marker(mapView).apply {
+                                    position = GeoPoint(accident.latitude, accident.longitude)
+
+                                    val dotColor = when (accident.severity) {
+                                        1 -> Color.RED              // Fatal
+                                        2 -> Color.rgb(255, 140, 0) // Serious (Orange)
+                                        else -> Color.YELLOW        // Slight
+                                    }
+
+                                    icon = MarkerIconFactory.plainDot(mapView.context, dotColor, 14)
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+
+                                    val severityText = when (accident.severity) {
+                                        1 -> "Fatal Collision"
+                                        2 -> "Serious Collision"
+                                        else -> "Slight Collision"
+                                    }
+
+                                    title = severityText
+                                    snippet = "${accident.date} · ${accident.weatherConditions} · ${accident.numberOfVehicles} vehicles involved"
+
+                                    setOnMarkerClickListener { _, _ ->
+                                        selectedAccident = accident
+                                        true // Return true to consume the click and prevent default tooltips
                                     }
                                 }
                                 mapView.overlays.add(marker)
@@ -373,7 +428,11 @@ fun CrimeMapScreen(
             if (movedFar) {
                 ExtendedFloatingActionButton(
                     onClick = {
-                        viewModel.loadCrimes(center.latitude, center.longitude)
+                        if (state.viewMode == ViewMode.ACCIDENTS) {
+                            mapViewRef?.let { viewModel.loadAccidentsForVisibleArea(it) }
+                        } else {
+                            viewModel.loadCrimes(center.latitude, center.longitude)
+                        }
                         onLocationChanged(center.latitude, center.longitude)
                         loadedCenter = center
                         animateTarget = center
@@ -388,7 +447,13 @@ fun CrimeMapScreen(
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (state.viewMode == ViewMode.CRIMES) "Search this area" else "Search stops here")
+                    Text(
+                        when (state.viewMode) {
+                            ViewMode.CRIMES -> "Search this area"
+                            ViewMode.STOP_SEARCH -> "Search stops here"
+                            ViewMode.ACCIDENTS -> "Search accidents here"
+                        }
+                    )
                 }
             }
         }
@@ -511,6 +576,70 @@ fun CrimeMapScreen(
                             clusterSheetOpen = null
                             selectedCrime = crime
                         })
+                    }
+                }
+            }
+        }
+    }
+
+    if (selectedAccident != null) {
+        val accident = selectedAccident!!
+        ModalBottomSheet(
+            onDismissRequest = { selectedAccident = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                // Dynamic header color and text based on severity
+                val (severityText, severityColor) = when (accident.severity) {
+                    1 -> "Fatal Collision" to androidx.compose.ui.graphics.Color(0xFFD32F2F) // Red
+                    2 -> "Serious Collision" to androidx.compose.ui.graphics.Color(0xFFF57C00) // Orange
+                    else -> "Slight Collision" to androidx.compose.ui.graphics.Color(0xFFFBC02D) // Yellow
+                }
+
+                Text(
+                    text = severityText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = severityColor,
+                    modifier = Modifier.padding(bottom = 16.dp, top = 8.dp)
+                )
+
+                // Detail Grid
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Date", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accident.date, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Weather", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accident.weatherConditions, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Vehicles Involved", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accident.numberOfVehicles.toString(), style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Casualties", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accident.numberOfCasualties.toString(), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Speed Limit", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${accident.speedLimit} mph", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Reference", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accident.accidentReference, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

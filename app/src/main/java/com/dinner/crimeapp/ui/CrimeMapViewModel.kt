@@ -10,6 +10,10 @@ import com.dinner.crimeapp.data.CrimeRepository
 import com.dinner.crimeapp.data.OutcomeEntry
 import com.dinner.crimeapp.data.GeocodeResult
 import com.dinner.crimeapp.data.StopSearch
+import com.dinner.crimeapp.data.AppDatabase
+import com.dinner.crimeapp.data.AccidentDataInitializer
+import com.dinner.crimeapp.data.RoadAccidentEntity
+import org.osmdroid.views.MapView
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,12 +30,13 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlin.time.Duration.Companion.milliseconds
 
-enum class ViewMode { CRIMES, STOP_SEARCH }
+enum class ViewMode { CRIMES, STOP_SEARCH, ACCIDENTS }
 
 data class CrimeMapState(
     val isLoading: Boolean = false,
     val crimesByMonth: Map<String, List<Crime>> = emptyMap(),
     val stopSearchesByMonth: Map<String, List<StopSearch>> = emptyMap(),
+    val visibleAccidents: List<RoadAccidentEntity> = emptyList(),
     val crimesRateLimited: Boolean = false,
     val stopsRateLimited: Boolean = false,
     val viewMode: ViewMode = ViewMode.CRIMES,
@@ -140,6 +145,12 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
     }
 
     init {
+        // Initialize offline accident data in the background
+        viewModelScope.launch {
+            val db = AppDatabase.getDatabase(getApplication())
+            AccidentDataInitializer.initializeAccidentData(getApplication(), db.roadAccidentDao())
+        }
+
         loadCategories()
         setupSearchDebounce()
         _savedPlaces.value = SavedPlacesStore.load(appContext)
@@ -275,6 +286,20 @@ class CrimeMapViewModel(application: Application) : AndroidViewModel(application
 
     fun setViewMode(mode: ViewMode) {
         _state.value = _state.value.copy(viewMode = mode)
+    }
+
+    fun loadAccidentsForVisibleArea(mapView: MapView) {
+        val bounds = mapView.boundingBox
+        viewModelScope.launch {
+            val db = AppDatabase.getDatabase(appContext)
+            val accidents = db.roadAccidentDao().getAccidentsInArea(
+                minLat = bounds.latSouth,
+                maxLat = bounds.latNorth,
+                minLng = bounds.lonWest,
+                maxLng = bounds.lonEast
+            )
+            _state.value = _state.value.copy(visibleAccidents = accidents)
+        }
     }
 
     fun selectMonth(month: String?) {

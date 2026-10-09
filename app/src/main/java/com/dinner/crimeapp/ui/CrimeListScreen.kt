@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dinner.crimeapp.data.Crime
 import com.dinner.crimeapp.data.StopSearch
+import com.dinner.crimeapp.data.RoadAccidentEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +45,13 @@ fun CrimeListScreen(
     val stops = viewModel.visibleStopSearches()
         .sortedByDescending { it.datetime }
 
-    val isEmpty = if (state.viewMode == ViewMode.CRIMES) crimes.isEmpty() else stops.isEmpty()
+    val accidents = state.visibleAccidents
+
+    val isEmpty = when (state.viewMode) {
+        ViewMode.CRIMES -> crimes.isEmpty()
+        ViewMode.STOP_SEARCH -> stops.isEmpty()
+        ViewMode.ACCIDENTS -> accidents.isEmpty()
+    }
     val isRateLimited = if (state.viewMode == ViewMode.CRIMES) state.crimesRateLimited else state.stopsRateLimited
 
     if (isEmpty && !state.isLoading) {
@@ -59,13 +66,21 @@ fun CrimeListScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        if (state.viewMode == ViewMode.CRIMES) {
-            items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
-                CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
+        when (state.viewMode) {
+            ViewMode.CRIMES -> {
+                items(crimes, key = { it.persistentId.ifBlank { it.id.toString() } }) { crime ->
+                    CrimeListItem(crime = crime, onClick = { selectedCrime = crime })
+                }
             }
-        } else {
-            items(stops, key = { it.hashCode() }) { stop ->
-                StopSearchListItem(stop = stop, onClick = { selectedStop = stop })
+            ViewMode.STOP_SEARCH -> {
+                items(stops, key = { it.hashCode() }) { stop ->
+                    StopSearchListItem(stop = stop, onClick = { selectedStop = stop })
+                }
+            }
+            ViewMode.ACCIDENTS -> {
+                items(accidents, key = { it.accidentReference }) { accident ->
+                    RoadAccidentListItem(accident = accident)
+                }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -116,9 +131,45 @@ private fun EmptyState(isRateLimited: Boolean, viewMode: ViewMode) {
                 when {
                     isRateLimited -> "Rate limited — try again in a moment"
                     viewMode == ViewMode.CRIMES -> "No crimes found for this area and filter"
-                    else -> "No stop and search records here"
+                    viewMode == ViewMode.STOP_SEARCH -> "No stop and search records here"
+                    viewMode == ViewMode.ACCIDENTS -> "No road accident records in this area"
+                    else -> "No records found"
                 },
                 style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun RoadAccidentListItem(accident: RoadAccidentEntity) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            val (severityText, severityColor) = when (accident.severity) {
+                1 -> "Fatal Collision" to MaterialTheme.colorScheme.error
+                2 -> "Serious Collision" to MaterialTheme.colorScheme.tertiary
+                else -> "Slight Collision" to MaterialTheme.colorScheme.secondary
+            }
+            Text(
+                text = severityText,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = severityColor
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "${accident.date} · Weather: ${accident.weatherConditions}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "${accident.numberOfVehicles} vehicles · ${accident.numberOfCasualties} casualties · Speed limit: ${accident.speedLimit} mph",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

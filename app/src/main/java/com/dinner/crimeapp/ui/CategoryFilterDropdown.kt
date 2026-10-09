@@ -27,7 +27,7 @@ fun CategoryFilterDropdown(
     val selectedName = categories.find { it.url == selected }?.name
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = Modifier, // Removed fillMaxWidth and padding to fit in the combined row
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         FilterChip(

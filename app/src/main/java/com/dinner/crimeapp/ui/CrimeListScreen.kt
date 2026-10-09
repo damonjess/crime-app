@@ -1,5 +1,7 @@
 package com.dinner.crimeapp.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,12 +9,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dinner.crimeapp.data.Crime
@@ -236,8 +241,10 @@ fun CrimeListItem(crime: Crime, onClick: () -> Unit) {
 fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
     val history by viewModel.outcomeHistory.collectAsState()
     val loading by viewModel.outcomeLoading.collectAsState()
+    val context = LocalContext.current
 
     Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 32.dp)) {
+        // 1. Header
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(
                 shape = RoundedCornerShape(14.dp),
@@ -245,11 +252,11 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
             ) {
                 Text(
                     CrimeCategoryIcons.emojiFor(crime.category),
-                    modifier = Modifier.padding(10.dp),
-                    style = MaterialTheme.typography.headlineSmall
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.headlineMedium
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
             Column {
                 Text(
                     CrimeCategoryIcons.shortName(crime.category),
@@ -258,56 +265,83 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
                 )
                 Text(
                     crime.outcomeStatus?.let { shortenOutcome(it.category) } ?: "Under investigation",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        Spacer(Modifier.height(16.dp))
+        
+        Spacer(Modifier.height(20.dp))
 
-        DetailRow("Location", crime.location.street?.name ?: "Unknown")
-        DetailRow("Location type", crime.locationType ?: "Not specified")
-        DetailRow("Month reported", formatMonthLabel(crime.month))
-        DetailRow("Coordinates", "%.4f, %.4f".format(crime.location.latitude.toDoubleOrNull() ?: 0.0, crime.location.longitude.toDoubleOrNull() ?: 0.0))
-        DetailRow("Case ID", crime.persistentId.ifBlank { crime.id.toString() })
+        // 2. Action Buttons
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val lat = crime.location.latitude
+            val lng = crime.location.longitude
+            Button(
+                onClick = {
+                    val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+            ) {
+                Icon(Icons.Filled.Directions, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Directions")
+            }
+            
+            Button(
+                onClick = {
+                    val text = "Crime report: ${CrimeCategoryIcons.shortName(crime.category)} near ${crime.location.street?.name?.removePrefix("On or near ") ?: "unknown location"} in ${formatMonthLabel(crime.month)}."
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share crime"))
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Share")
+            }
+        }
 
-        Spacer(Modifier.height(16.dp))
-        HorizontalDivider()
+        Spacer(Modifier.height(20.dp))
+
+        // 3. Details Card
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                DetailRow("Location", crime.location.street?.name?.removePrefix("On or near ") ?: "Unknown")
+                DetailRow("Month", formatMonthLabel(crime.month))
+                if (crime.locationType != null) DetailRow("Type", crime.locationType)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        Text("Case history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
-
-        Text(
-            "Case history",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
 
         when {
             loading -> CircularProgressIndicator(Modifier.padding(8.dp))
-            history.isEmpty() -> Text(
-                "No further outcome stages recorded yet.",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            history.isEmpty() -> Text("No further outcome stages recorded yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> history.forEachIndexed { index, entry ->
-                Row(Modifier.padding(vertical = 6.dp)) {
+                Row(Modifier.padding(vertical = 8.dp)) {
                     Text(
                         "${index + 1}",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(28.dp)
+                        modifier = Modifier.width(32.dp)
                     )
                     Column {
-                        Text(
-                            CrimeCategoryIcons.shortName(entry.category),
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            entry.date,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(shortenOutcome(entry.category), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Text(entry.date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -317,29 +351,99 @@ fun CrimeDetailContent(crime: Crime, viewModel: CrimeMapViewModel) {
 
 @Composable
 fun StopSearchDetailContent(stop: StopSearch) {
+    val context = LocalContext.current
     Column(
         Modifier
             .fillMaxWidth()
             .padding(20.dp)
             .padding(bottom = 32.dp)
     ) {
-        Text(
-            stop.objectOfSearch ?: "Stop and search",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(12.dp))
+        // 1. Header
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    "🛑",
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.headlineMedium
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    stop.objectOfSearch ?: "Stop and search",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stop.outcome ?: "Outcome unrecorded",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
-        DetailRow("Date", stop.datetime?.take(10) ?: "Unknown")
-        DetailRow("Time", stop.datetime?.substringAfter("T")?.take(5) ?: "Unknown")
-        DetailRow("Type", stop.type ?: "N/A")
-        DetailRow("Gender", stop.gender ?: "N/A")
-        DetailRow("Age range", stop.ageRange ?: "N/A")
-        DetailRow("Ethnicity", stop.selfDefinedEthnicity ?: "N/A")
-        DetailRow("Outcome", stop.outcome ?: "N/A")
+        Spacer(Modifier.height(20.dp))
 
-        if (stop.location?.street != null) {
-            DetailRow("Location", stop.location.street.name)
+        // 2. Action Buttons
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val lat = stop.location?.latitude
+            val lng = stop.location?.longitude
+            if (lat != null && lng != null) {
+                Button(
+                    onClick = {
+                        val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                ) {
+                    Icon(Icons.Filled.Directions, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Directions")
+                }
+            }
+            
+            Button(
+                onClick = {
+                    val text = "Stop & Search: ${stop.objectOfSearch ?: "Person"} on ${stop.datetime?.take(10) ?: "unknown date"}."
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share record"))
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Share")
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // 3. Details Card
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                DetailRow("Date", stop.datetime?.take(10) ?: "Unknown")
+                DetailRow("Time", stop.datetime?.substringAfter("T")?.take(5) ?: "Unknown")
+                if (stop.location?.street != null) {
+                    DetailRow("Location", stop.location.street.name.removePrefix("On or near "))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                DetailRow("Type", stop.type?.replaceFirstChar { it.uppercase() } ?: "N/A")
+                DetailRow("Gender", stop.gender?.replaceFirstChar { it.uppercase() } ?: "N/A")
+                DetailRow("Age range", stop.ageRange ?: "N/A")
+                DetailRow("Ethnicity", stop.selfDefinedEthnicity ?: "N/A")
+            }
         }
     }
 }
@@ -366,5 +470,6 @@ private fun shortenOutcome(outcome: String): String = when {
     outcome.contains("court", ignoreCase = true) -> "Court"
     outcome.contains("charged", ignoreCase = true) -> "Charged"
     outcome.contains("investigation", ignoreCase = true) -> "Investigating"
-    else -> outcome.replace("-", " ").take(22)
+    outcome.contains("status-update-unavailable", ignoreCase = true) -> "Status unavailable"
+    else -> outcome.replace("-", " ").replaceFirstChar { it.uppercase() }
 }

@@ -8,11 +8,15 @@ import android.graphics.Paint
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.MyLocation
@@ -69,6 +73,7 @@ fun CrimeMapScreen(
     // Layer mode: dots, heat, or clusters
     var layerMode by rememberSaveable { mutableStateOf(MapLayerMode.DOTS) }
     var layersSheetOpen by remember { mutableStateOf(false) }
+    var legendSheetOpen by remember { mutableStateOf(false) }
 
     val visibleCrimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory, state.viewMode) {
         viewModel.visibleCrimes()
@@ -115,14 +120,20 @@ fun CrimeMapScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp)
+                        .padding(top = 8.dp, bottom = 2.dp) // Tightened padding
                 )
+
+                // Merged Toggle and Category row
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
+                    SingleChoiceSegmentedButtonRow(Modifier.width(180.dp)) {
                         SegmentedButton(
                             selected = state.viewMode == ViewMode.CRIMES,
                             onClick = { viewModel.setViewMode(ViewMode.CRIMES) },
@@ -134,14 +145,16 @@ fun CrimeMapScreen(
                             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                         ) { Text("Stops") }
                     }
+
+                    if (state.viewMode == ViewMode.CRIMES) {
+                        CategoryFilterDropdown(
+                            categories = state.categories,
+                            selected = state.selectedCategory,
+                            onSelect = { viewModel.selectCategory(it) }
+                        )
+                    }
                 }
-                if (state.viewMode == ViewMode.CRIMES) {
-                    CategoryFilterDropdown(
-                        categories = state.categories,
-                        selected = state.selectedCategory,
-                        onSelect = { viewModel.selectCategory(it) }
-                    )
-                }
+
                 LazyRowMonthPicker(
                     months = state.crimesByMonth.keys.sortedDescending(),
                     selected = state.selectedMonth,
@@ -307,6 +320,12 @@ fun CrimeMapScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             MapFab(icon = { Icon(Icons.Outlined.Layers, "Map layers") }, onClick = { layersSheetOpen = true })
+
+            // ADD THIS NEW BUTTON:
+            if (state.viewMode == ViewMode.CRIMES && layerMode != MapLayerMode.CLUSTERS && visibleCrimes.isNotEmpty()) {
+                MapFab(icon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, "Legend") }, onClick = { legendSheetOpen = true })
+            }
+
             if (onRequestMyLocation != null) {
                 MapFab(icon = { Icon(Icons.Filled.MyLocation, "My location") }, onClick = { onRequestMyLocation() })
             }
@@ -324,25 +343,6 @@ fun CrimeMapScreen(
                 )
                 Toast.makeText(context, "Place saved", Toast.LENGTH_SHORT).show()
             })
-        }
-
-        // ---- Legend (dots + heat modes) ----
-        if (state.viewMode == ViewMode.CRIMES && layerMode != MapLayerMode.CLUSTERS && visibleCrimes.isNotEmpty()) {
-            MapLegend(
-                entries = visibleCrimes.groupingBy { it.category }.eachCount()
-                    .entries.sortedByDescending { it.value }.take(5)
-                    .map {
-                        LegendEntry(
-                            CrimeCategoryIcons.shortName(it.key),
-                            CrimeCategoryColors.colorFor(it.key),
-                            it.value
-                        )
-                    },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 12.dp, bottom = 96.dp)
-                    .zIndex(3f)
-            )
         }
 
         // ---- Search this area ----
@@ -421,6 +421,47 @@ fun CrimeMapScreen(
             )
         }
     }
+
+    if (legendSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { legendSheetOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            val entries = visibleCrimes.groupingBy { it.category }.eachCount()
+                .entries.sortedByDescending { it.value }
+                .map {
+                    LegendEntry(
+                        CrimeCategoryIcons.shortName(it.key),
+                        CrimeCategoryColors.colorFor(it.key),
+                        it.value
+                    )
+                }
+
+            Column(Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 24.dp)) {
+                Text("Map Legend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+
+                LazyColumn {
+                    items(entries) { e ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(16.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(e.color)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text(e.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Text(e.count.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 enum class MapLayerMode { DOTS, HEAT, CLUSTERS }
@@ -438,56 +479,6 @@ private fun MapFab(icon: @Composable () -> Unit, onClick: () -> Unit) {
 }
 
 data class LegendEntry(val label: String, val color: androidx.compose.ui.graphics.Color, val count: Int)
-
-@Composable
-fun MapLegend(entries: List<LegendEntry>, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 3.dp
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(
-                if (expanded) "Top categories" else "Legend",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            val shown = if (expanded) entries else entries.take(3)
-            shown.forEach { e ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 6.dp)
-                ) {
-                    Box(
-                        Modifier
-                            .size(10.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(e.color)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "${e.label} · ${e.count}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-            if (entries.size > 3) {
-                Text(
-                    if (expanded) "Show less" else "+${entries.size - 3} more",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable { expanded = !expanded }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 fun LayerPickerContent(selected: MapLayerMode, onSelect: (MapLayerMode) -> Unit) {
@@ -546,7 +537,7 @@ fun LazyRowMonthPicker(
     onSelect: (String?) -> Unit
 ) {
     LazyRow(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 6.dp), // Compacting vertical padding
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {

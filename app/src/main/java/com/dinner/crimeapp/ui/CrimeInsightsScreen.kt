@@ -6,8 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.LocationCity
@@ -29,8 +31,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dinner.crimeapp.data.Crime
+import com.dinner.crimeapp.data.RoadAccidentEntity
 
 @Composable
 fun CrimeInsightsScreen(
@@ -41,6 +46,49 @@ fun CrimeInsightsScreen(
     val crimes = remember(state.crimesByMonth, state.selectedMonth, state.selectedCategory) {
         viewModel.visibleCrimes()
     }
+    var insightsMode by remember { mutableStateOf(ViewMode.CRIMES) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 1. The Toggle Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = insightsMode == ViewMode.CRIMES,
+                onClick = { insightsMode = ViewMode.CRIMES },
+                label = { Text("Crime") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+            FilterChip(
+                selected = insightsMode == ViewMode.ACCIDENTS,
+                onClick = { insightsMode = ViewMode.ACCIDENTS },
+                label = { Text("Road Safety") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF8B0000), // Matching your Map tab's red button
+                    selectedLabelColor = Color.White
+                )
+            )
+        }
+
+        // 2. The Content Switcher
+        if (insightsMode == ViewMode.CRIMES) {
+            CrimeInsightsDashboard(crimes = crimes, onShareReport = onShareReport)
+        } else {
+            RoadSafetyInsightsDashboard(accidents = state.visibleAccidents)
+        }
+    }
+}
+
+@Composable
+fun CrimeInsightsDashboard(
+    crimes: List<Crime>,
+    onShareReport: () -> Unit = {}
+) {
     val stats = remember(crimes) { CrimeStats.compute(crimes) }
     val score = remember(crimes) { CrimeStats.safetyScore(crimes) }
 
@@ -133,6 +181,132 @@ fun CrimeInsightsScreen(
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+fun RoadSafetyInsightsDashboard(accidents: List<RoadAccidentEntity>) {
+    if (accidents.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No collision data for this area.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    // --- Aggregation Math ---
+    val totalCollisions = accidents.size
+    val totalCasualties = accidents.sumOf { it.numberOfCasualties }
+    val totalVehicles = accidents.sumOf { it.numberOfVehicles }
+    
+    val fatalCount = accidents.count { it.severity == 1 }
+    val seriousCount = accidents.count { it.severity == 2 }
+    val slightCount = accidents.count { it.severity == 3 }
+
+    // Group by weather and speed limit, sorted highest to lowest
+    val weatherStats = accidents.groupingBy { it.weatherConditions }.eachCount()
+        .toList().sortedByDescending { it.second }.take(4)
+    val speedStats = accidents.groupingBy { it.speedLimit }.eachCount()
+        .toList().sortedByDescending { it.second }.take(4)
+
+    // --- UI Rendering ---
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Top Row: High-level Stats
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            StatCard(modifier = Modifier.weight(1f), title = "Total collisions", value = totalCollisions.toString(), icon = "💥")
+            StatCard(modifier = Modifier.weight(1f), title = "Total casualties", value = totalCasualties.toString(), icon = "🚑")
+        }
+
+        // Severity Breakdown Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2235)), // Matching your dark blue cards
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Collision Severity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Share of incidents by impact", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+                
+                InsightProgressBar(label = "Fatal", count = fatalCount, total = totalCollisions, color = Color(0xFFD32F2F))
+                InsightProgressBar(label = "Serious", count = seriousCount, total = totalCollisions, color = Color(0xFFF57C00))
+                InsightProgressBar(label = "Slight", count = slightCount, total = totalCollisions, color = Color(0xFFFBC02D))
+            }
+        }
+
+        // Environmental Factors Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2235)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Weather Conditions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Most incidents occurred during:", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+
+                weatherStats.forEach { (condition, count) ->
+                    InsightProgressBar(label = condition, count = count, total = totalCollisions, color = Color(0xFF81D4FA))
+                }
+            }
+        }
+
+        // Speed Limit Risk Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2235)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Speed Limit Zones", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Collisions mapped by posted speed limits", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+
+                speedStats.forEach { (limit, count) ->
+                    InsightProgressBar(label = "${limit} mph", count = count, total = totalCollisions, color = Color(0xFFB39DDB))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatCard(modifier: Modifier = Modifier, title: String, value: String, icon: String) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2235)),
+        shape = RoundedCornerShape(16.dp),
+        // Fix: Changed from .height(100.dp) so it can expand to fit the text
+        modifier = modifier.defaultMinSize(minHeight = 110.dp) 
+    ) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Text(icon, fontSize = 20.sp)
+            Column {
+                Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(title, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+fun InsightProgressBar(label: String, count: Int, total: Int, color: Color) {
+    if (total == 0) return
+    val percentage = count.toFloat() / total.toFloat()
+    
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+    ) {
+        Text(label, color = Color.White, modifier = Modifier.weight(0.3f), style = MaterialTheme.typography.bodyMedium)
+        LinearProgressIndicator(
+            progress = { percentage },
+            modifier = Modifier.weight(0.5f).height(8.dp).clip(RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = Color(0xFF2C314A) // Slightly lighter than background
+        )
+        Text(count.toString(), color = Color.White, modifier = Modifier.weight(0.2f), textAlign = TextAlign.End, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

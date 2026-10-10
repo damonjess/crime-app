@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -16,6 +18,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { localProperties.load(it) }
+        }
+        val mapillaryToken = localProperties.getProperty("mapillary.token") ?: ""
+        buildConfigField("String", "MAPILLARY_TOKEN", "\"$mapillaryToken\"")
     }
 
     compileOptions {
@@ -24,6 +34,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -43,9 +54,13 @@ dependencies {
     // Networking
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation(libs.moshi)
     ksp(libs.moshi.codegen)
     implementation(libs.okhttp.logging)
+
+    // Compose Image Loading
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     // Map
     implementation(libs.osmdroid)

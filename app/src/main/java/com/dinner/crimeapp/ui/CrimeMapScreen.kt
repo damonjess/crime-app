@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -40,8 +41,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dinner.crimeapp.data.Crime
+import com.dinner.crimeapp.data.MapillaryClient
 import com.dinner.crimeapp.data.RoadAccidentEntity
 import com.dinner.crimeapp.data.StopSearch
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
@@ -71,6 +75,8 @@ fun CrimeMapScreen(
     var selectedCrime by remember { mutableStateOf<Crime?>(null) }
     var selectedStop by remember { mutableStateOf<StopSearch?>(null) }
     var selectedAccident by remember { mutableStateOf<RoadAccidentEntity?>(null) }
+    var streetImageUrl by remember { mutableStateOf<String?>(null) }
+    var isImageLoading by remember { mutableStateOf(false) }
 
     var clusterSheetOpen by remember { mutableStateOf<List<Crime>?>(null) }
 
@@ -476,7 +482,18 @@ fun CrimeMapScreen(
 
     // ---- Detail sheets ----
     selectedCrime?.let { crime ->
+        LaunchedEffect(crime) {
+            streetImageUrl = null
+            isImageLoading = true
+            val lat = crime.location.latitude.toDoubleOrNull()
+            val lng = crime.location.longitude.toDoubleOrNull()
+            if (lat != null && lng != null) {
+                streetImageUrl = MapillaryClient.getNearestImageUrl(lat, lng)
+            }
+            isImageLoading = false
+        }
         LaunchedEffect(crime.persistentId) { viewModel.loadOutcomeHistory(crime.persistentId) }
+
         ModalBottomSheet(
             onDismissRequest = { 
                 selectedCrime = null
@@ -485,11 +502,32 @@ fun CrimeMapScreen(
             },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            CrimeDetailContent(crime, viewModel)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                MapillaryImageHeader(imageUrl = streetImageUrl, isLoading = isImageLoading)
+                Spacer(modifier = Modifier.height(16.dp))
+                CrimeDetailContent(crime, viewModel)
+            }
         }
     }
 
     selectedStop?.let { stop ->
+        LaunchedEffect(stop) {
+            streetImageUrl = null
+            isImageLoading = true
+            val lat = stop.location?.latitude?.toDoubleOrNull()
+            val lng = stop.location?.longitude?.toDoubleOrNull()
+            if (lat != null && lng != null) {
+                streetImageUrl = MapillaryClient.getNearestImageUrl(lat, lng)
+            }
+            isImageLoading = false
+        }
+
         ModalBottomSheet(
             onDismissRequest = { 
                 selectedStop = null
@@ -497,7 +535,17 @@ fun CrimeMapScreen(
             },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            StopSearchDetailContent(stop, viewModel)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                MapillaryImageHeader(imageUrl = streetImageUrl, isLoading = isImageLoading)
+                Spacer(modifier = Modifier.height(16.dp))
+                StopSearchDetailContent(stop, viewModel)
+            }
         }
     }
 
@@ -584,6 +632,14 @@ fun CrimeMapScreen(
 
     if (selectedAccident != null) {
         val accident = selectedAccident!!
+
+        LaunchedEffect(accident) {
+            streetImageUrl = null
+            isImageLoading = true
+            streetImageUrl = MapillaryClient.getNearestImageUrl(accident.latitude, accident.longitude)
+            isImageLoading = false
+        }
+
         ModalBottomSheet(
             onDismissRequest = { selectedAccident = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -591,9 +647,13 @@ fun CrimeMapScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 32.dp)
             ) {
+                MapillaryImageHeader(imageUrl = streetImageUrl, isLoading = isImageLoading)
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Dynamic header color and text based on severity
                 val (severityText, severityColor) = when (accident.severity) {
                     1 -> "Fatal Collision" to androidx.compose.ui.graphics.Color(0xFFD32F2F) // Red
@@ -748,4 +808,45 @@ fun formatMonthLabel(month: String): String {
         val name = java.time.Month.of(parts[1].toInt()).name.lowercase().replaceFirstChar { it.uppercase() }.take(3)
         "$name $year"
     }.getOrDefault(month)
+}
+
+@Composable
+fun MapillaryImageHeader(imageUrl: String?, isLoading: Boolean) {
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
+    } else if (imageUrl != null) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Street level view",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(12.dp))
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "No street view available",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
 }
